@@ -31,7 +31,7 @@ class _ModuleManagementScreenState extends State<ModuleManagementScreen> {
       drawer: const PresidentSideDrawer(),
       backgroundColor: AppColors.lightGrayBg,
       bottomNavigationBar: PresidentBottomNavBar(
-        activeItem: PresidentNavItem.home,
+        activeItem: null,
         onItemSelected: _handleNavSelection,
       ),
       floatingActionButton: FloatingActionButton.extended(

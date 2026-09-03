@@ -42,7 +42,7 @@ class _PresidentLeadershipScreenState extends State<PresidentLeadershipScreen> {
       bottomNavigationBar: PresidentBottomNavBar(
         activeItem: _isYouth
             ? PresidentNavItem.leadership
-            : PresidentNavItem.home,
+            : null,
         onItemSelected: _handleNavSelection,
       ),
       body: SafeArea(

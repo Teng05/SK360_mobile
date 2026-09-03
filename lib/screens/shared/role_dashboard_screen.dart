@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 
 import '../../routes.dart';
@@ -18,7 +16,6 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   bool _isLoading = false;
   int _activeFeedTab = 0;
-  Timer? _notificationTimer;
 
   Map<String, dynamic> get _data => MobileApiService.syncedData ?? {};
   Map<String, dynamic> get _user => MobileApiService.currentUser ?? {};
@@ -29,16 +26,6 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
     if (MobileApiService.syncedData == null) {
       _refresh();
     }
-    _notificationTimer = Timer.periodic(
-      const Duration(seconds: 8),
-      (_) => _refreshNotifications(),
-    );
-  }
-
-  @override
-  void dispose() {
-    _notificationTimer?.cancel();
-    super.dispose();
   }
 
   @override
@@ -46,16 +33,28 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
     final barangay = _user['barangay_name']?.toString() ?? 'Barangay';
     final posts = _rows('wall_posts');
     final meetings = _rows('meetings');
-    final notifications = _rows('notifications');
-    final unread = notifications
-        .where((n) => n['is_read'] == false || n['is_read'] == 0)
-        .length;
     final isYouth = _user['role']?.toString() == 'youth';
 
     return Scaffold(
       key: _scaffoldKey,
       drawer: isYouth ? null : const PresidentSideDrawer(),
       backgroundColor: AppColors.lightGrayBg,
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(86),
+        child: SafeArea(
+          bottom: false,
+          child: PresidentHeader(
+            leading: isYouth
+                ? PresidentHeaderLeading.none
+                : PresidentHeaderLeading.menu,
+            onLeadingTap: isYouth
+                ? null
+                : () => _scaffoldKey.currentState?.openDrawer(),
+            title: 'SK 360',
+            subtitle: barangay,
+          ),
+        ),
+      ),
       bottomNavigationBar: PresidentBottomNavBar(
         activeItem: PresidentNavItem.home,
         onItemSelected: _handleNavSelection,
@@ -66,21 +65,7 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
           child: ListView(
             padding: const EdgeInsets.only(bottom: 18),
             children: [
-              _TopBar(
-                barangay: barangay,
-                onMenu: isYouth
-                    ? null
-                    : () => _scaffoldKey.currentState?.openDrawer(),
-              ),
               if (_isLoading) const LinearProgressIndicator(minHeight: 3),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                child: _NotificationShortcut(
-                  unread: unread,
-                  notifications: notifications,
-                  onOpen: _showNotifications,
-                ),
-              ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
                 child: Row(
@@ -168,17 +153,6 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
     }
   }
 
-  Future<void> _refreshNotifications() async {
-    if (_isLoading || !MobileApiService.isLoggedIn) return;
-
-    try {
-      await MobileApiService.sync();
-      if (mounted) setState(() {});
-    } catch (_) {
-      // Keep background notification refresh quiet on shaky mobile networks.
-    }
-  }
-
   Future<void> _createWallPost(String content, String category) async {
     setState(() => _isLoading = true);
     try {
@@ -220,312 +194,6 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
       SnackBar(content: Text(message), backgroundColor: AppColors.primaryRed),
     );
   }
-
-  Future<void> _showNotifications() async {
-    final notifications = _rows('notifications');
-
-    await showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      backgroundColor: Colors.white,
-      builder: (sheetContext) {
-        return _NotificationsSheet(
-          notifications: notifications,
-          onMarkRead: (id) async {
-            try {
-              await MobileApiService.markNotificationRead(id);
-              if (mounted) setState(() {});
-            } on MobileApiException catch (exception) {
-              if (mounted) _showMessage(exception.message);
-            }
-          },
-        );
-      },
-    );
-  }
-}
-
-class _TopBar extends StatelessWidget {
-  final String barangay;
-  final VoidCallback? onMenu;
-
-  const _TopBar({required this.barangay, required this.onMenu});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 60,
-      color: const Color(0xFFF10612),
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      child: Row(
-        children: [
-          IconButton(
-            onPressed: onMenu,
-            icon: Icon(
-              onMenu == null ? Icons.home_outlined : Icons.menu,
-              color: Colors.white,
-              size: 20,
-            ),
-          ),
-          Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Text(
-                  'SK 360',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 12,
-                  ),
-                ),
-                Text(
-                  barangay,
-                  style: const TextStyle(color: Colors.white70, fontSize: 10),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 48),
-        ],
-      ),
-    );
-  }
-}
-
-class _NotificationShortcut extends StatelessWidget {
-  final int unread;
-  final List<Map<String, dynamic>> notifications;
-  final VoidCallback onOpen;
-
-  const _NotificationShortcut({
-    required this.unread,
-    required this.notifications,
-    required this.onOpen,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final sorted = [...notifications]..sort(_compareNotifications);
-    final latest = notifications.isEmpty
-        ? 'No notifications yet'
-        : _notificationTitle(sorted.first);
-
-    return InkWell(
-      onTap: onOpen,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppColors.borderPink),
-        ),
-        child: Row(
-          children: [
-            Stack(
-              clipBehavior: Clip.none,
-              children: [
-                Container(
-                  width: 42,
-                  height: 42,
-                  decoration: BoxDecoration(
-                    color: AppColors.primaryRed,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Icon(Icons.notifications, color: Colors.white),
-                ),
-                if (unread > 0)
-                  Positioned(
-                    right: -3,
-                    top: -3,
-                    child: CircleAvatar(
-                      radius: 9,
-                      backgroundColor: const Color(0xFFFFC107),
-                      child: Text(
-                        unread > 9 ? '9+' : '$unread',
-                        style: const TextStyle(
-                          fontSize: 9,
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Notifications',
-                    style: TextStyle(
-                      color: AppColors.darkGray,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 12,
-                    ),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    latest,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: AppColors.lightText,
-                      fontSize: 11,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const Icon(Icons.chevron_right, color: AppColors.lightText),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _NotificationsSheet extends StatelessWidget {
-  final List<Map<String, dynamic>> notifications;
-  final ValueChanged<int> onMarkRead;
-
-  const _NotificationsSheet({
-    required this.notifications,
-    required this.onMarkRead,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final sorted = [...notifications]..sort(_compareNotifications);
-
-    return SafeArea(
-      child: SizedBox(
-        height: 420,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Padding(
-              padding: EdgeInsets.fromLTRB(20, 4, 20, 12),
-              child: Text(
-                'Notifications',
-                style: TextStyle(
-                  color: AppColors.darkGray,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 18,
-                ),
-              ),
-            ),
-            if (sorted.isEmpty)
-              const Expanded(
-                child: Center(
-                  child: Text(
-                    'No notifications yet',
-                    style: TextStyle(color: AppColors.lightText),
-                  ),
-                ),
-              )
-            else
-              Expanded(
-                child: ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
-                  itemCount: sorted.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 8),
-                  itemBuilder: (context, index) {
-                    final item = sorted[index];
-                    final isRead =
-                        item['is_read'] == true || item['is_read'] == 1;
-                    final id = int.tryParse(
-                      '${item['notification_id'] ?? item['id'] ?? ''}',
-                    );
-
-                    return ListTile(
-                      tileColor: isRead ? Colors.white : AppColors.softPink,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        side: const BorderSide(color: AppColors.borderPink),
-                      ),
-                      leading: Icon(
-                        isRead
-                            ? Icons.notifications_none
-                            : Icons.notifications_active,
-                        color: AppColors.primaryRed,
-                      ),
-                      title: Text(
-                        _notificationTitle(item),
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      subtitle: Text(
-                        _notificationBody(item),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      trailing: isRead || id == null
-                          ? null
-                          : TextButton(
-                              onPressed: () => onMarkRead(id),
-                              child: const Text('Read'),
-                            ),
-                    );
-                  },
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-int _compareNotifications(Map<String, dynamic> a, Map<String, dynamic> b) {
-  final bDate = DateTime.tryParse(_notificationDate(b));
-  final aDate = DateTime.tryParse(_notificationDate(a));
-  if (aDate != null && bDate != null) return bDate.compareTo(aDate);
-  return _notificationDate(b).compareTo(_notificationDate(a));
-}
-
-String _notificationTitle(Map<String, dynamic> row) {
-  return _firstNotificationValue(row, [
-    'title',
-    'notification_title',
-    'type',
-    'category',
-  ], 'Notification');
-}
-
-String _notificationBody(Map<String, dynamic> row) {
-  return _firstNotificationValue(row, [
-    'message',
-    'body',
-    'content',
-    'description',
-    'created_at',
-  ], '');
-}
-
-String _notificationDate(Map<String, dynamic> row) {
-  return _firstNotificationValue(row, [
-    'created_at',
-    'updated_at',
-    'read_at',
-  ], '');
-}
-
-String _firstNotificationValue(
-  Map<String, dynamic> row,
-  List<String> keys,
-  String fallback,
-) {
-  for (final key in keys) {
-    final value = row[key];
-    if (value != null && value.toString().trim().isNotEmpty) {
-      return value.toString();
-    }
-  }
-
-  return fallback;
 }
 
 class _StatCard extends StatelessWidget {
@@ -608,7 +276,9 @@ class _UpcomingMeetingsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final visible = meetings.take(2).toList();
+    final visible = meetings.where(_isUpcomingMeeting).toList()
+      ..sort(_compareMeetings);
+    final upcoming = visible.take(2).toList();
 
     return _Panel(
       child: Column(
@@ -641,7 +311,7 @@ class _UpcomingMeetingsCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 10),
-          if (visible.isEmpty)
+          if (upcoming.isEmpty)
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 14),
               child: Text(
@@ -650,11 +320,59 @@ class _UpcomingMeetingsCard extends StatelessWidget {
               ),
             )
           else
-            ...visible.map((meeting) => _MeetingTile(row: meeting)),
+            ...upcoming.map((meeting) => _MeetingTile(row: meeting)),
         ],
       ),
     );
   }
+}
+
+bool _isUpcomingMeeting(Map<String, dynamic> meeting) {
+  final status = meeting['status']?.toString().toLowerCase();
+  if (status == 'completed' ||
+      status == 'done' ||
+      status == 'cancelled' ||
+      status == 'canceled') {
+    return false;
+  }
+
+  final scheduledAt = _meetingDateTime(meeting);
+  return scheduledAt != null && scheduledAt.isAfter(DateTime.now());
+}
+
+int _compareMeetings(Map<String, dynamic> a, Map<String, dynamic> b) {
+  final aDate = _meetingDateTime(a);
+  final bDate = _meetingDateTime(b);
+  if (aDate == null && bDate == null) return 0;
+  if (aDate == null) return 1;
+  if (bDate == null) return -1;
+  return aDate.compareTo(bDate);
+}
+
+DateTime? _meetingDateTime(Map<String, dynamic> meeting) {
+  final start = meeting['start_datetime']?.toString();
+  if (start != null && start.isNotEmpty && start.contains('T')) {
+    return DateTime.tryParse(start);
+  }
+
+  final dateText = meeting['meeting_date']?.toString() ?? start;
+  if (dateText == null || dateText.isEmpty) return null;
+
+  final date = DateTime.tryParse(dateText);
+  if (date == null) return null;
+
+  final timeText = meeting['meeting_time']?.toString();
+  if (timeText != null && timeText.isNotEmpty) {
+    final parts = timeText.split(':');
+    final hour = int.tryParse(parts.first);
+    final minute = parts.length > 1 ? int.tryParse(parts[1]) : 0;
+    if (hour != null && minute != null) {
+      return DateTime(date.year, date.month, date.day, hour, minute);
+    }
+  }
+
+  // Date-only meetings remain upcoming for the entire scheduled day.
+  return DateTime(date.year, date.month, date.day, 23, 59, 59);
 }
 
 class _MeetingTile extends StatelessWidget {
@@ -837,10 +555,7 @@ class _SharedWallComposer extends StatefulWidget {
   final bool isPosting;
   final Future<void> Function(String content, String category) onPost;
 
-  const _SharedWallComposer({
-    required this.isPosting,
-    required this.onPost,
-  });
+  const _SharedWallComposer({required this.isPosting, required this.onPost});
 
   @override
   State<_SharedWallComposer> createState() => _SharedWallComposerState();
@@ -1039,7 +754,8 @@ class _PostCard extends StatelessWidget {
     final content = row['content']?.toString() ?? '';
     final date = row['created_at']?.toString() ?? '';
     final likes = row['likes_count']?.toString() ?? '0';
-    final liked = row['liked_by_current_user'] == true ||
+    final liked =
+        row['liked_by_current_user'] == true ||
         row['liked_by_current_user'] == 1;
 
     return Container(

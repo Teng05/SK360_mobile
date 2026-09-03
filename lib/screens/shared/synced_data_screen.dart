@@ -118,7 +118,7 @@ class _SyncedDataScreenState extends State<SyncedDataScreen> {
     );
   }
 
-  PresidentNavItem get _activeNav {
+  PresidentNavItem? get _activeNav {
     if (widget.dataKey == 'events' || widget.dataKey == 'meetings') {
       return PresidentNavItem.calendar;
     }
@@ -128,10 +128,10 @@ class _SyncedDataScreenState extends State<SyncedDataScreen> {
     }
 
     if (widget.dataKey == 'wall_posts') {
-      return PresidentNavItem.announcements;
+      return _isYouth ? PresidentNavItem.announcements : null;
     }
 
-    return PresidentNavItem.home;
+    return null;
   }
 
   bool get _isYouth =>

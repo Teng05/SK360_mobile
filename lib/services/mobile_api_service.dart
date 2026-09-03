@@ -2,8 +2,11 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:shared_preferences/shared_preferences.dart';
+
 class MobileApiService {
-  static const String baseUrl = 'http://192.168.68.105:8000/api/mobile';
+  static const String _rememberedEmailKey = 'remembered_email';
+  static const String baseUrl = 'http://192.168.68.117:8000/api/mobile';
   static String webUrl(String path) {
     final root = baseUrl.replaceFirst(RegExp(r'/api/mobile$'), '');
     final normalizedPath = path.startsWith('/') ? path : '/$path';
@@ -15,6 +18,21 @@ class MobileApiService {
   static Map<String, dynamic>? syncedData;
 
   static bool get isLoggedIn => _accessToken != null;
+
+  static Future<String?> rememberedEmail() async {
+    final preferences = await SharedPreferences.getInstance();
+    return preferences.getString(_rememberedEmailKey);
+  }
+
+  static Future<void> rememberEmail(String email) async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setString(_rememberedEmailKey, email);
+  }
+
+  static Future<void> clearRememberedEmail() async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.remove(_rememberedEmailKey);
+  }
 
   static Future<Map<String, dynamic>> login({
     required String email,
@@ -183,6 +201,32 @@ class MobileApiService {
         'password': password,
         'password_confirmation': passwordConfirmation,
       },
+    );
+  }
+
+  static Future<Map<String, dynamic>> requestPasswordChange({
+    required String currentPassword,
+    required String password,
+    required String passwordConfirmation,
+  }) {
+    return _request(
+      'POST',
+      '/profile/password/request',
+      body: {
+        'current_password': currentPassword,
+        'password': password,
+        'password_confirmation': passwordConfirmation,
+      },
+    );
+  }
+
+  static Future<Map<String, dynamic>> verifyPasswordChange({
+    required String code,
+  }) {
+    return _request(
+      'POST',
+      '/profile/password/verify',
+      body: {'code': code},
     );
   }
 

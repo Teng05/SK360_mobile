@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../routes.dart';
 import '../services/mobile_api_service.dart';
 import '../ui/app_ui.dart';
+import 'notification_bell.dart';
 
 enum PresidentNavItem {
   home,
@@ -61,10 +62,13 @@ class PresidentHeader extends StatelessWidget {
           else
             const SizedBox(width: 48),
           Expanded(child: customContent ?? _buildDefaultCenter()),
-          if (trailing != null && trailing!.isNotEmpty)
-            Row(children: trailing!)
-          else
-            const SizedBox(width: 48),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const NotificationBell(),
+              if (trailing != null) ...trailing!,
+            ],
+          ),
         ],
       ),
     );
@@ -93,7 +97,7 @@ class PresidentHeader extends StatelessWidget {
 }
 
 class PresidentBottomNavBar extends StatelessWidget {
-  final PresidentNavItem activeItem;
+  final PresidentNavItem? activeItem;
   final ValueChanged<PresidentNavItem> onItemSelected;
 
   const PresidentBottomNavBar({
@@ -220,8 +224,8 @@ class PresidentSideDrawer extends StatelessWidget {
     final menuItems = role == 'youth'
         ? _youthItems
         : isOfficial
-            ? _chairmanItems
-            : _presidentItems;
+        ? _chairmanItems
+        : _presidentItems;
     final roleLabel = switch (role) {
       'sk_chairman' => 'SK Chairman',
       'sk_secretary' => 'SK Secretary',
@@ -247,7 +251,10 @@ class PresidentSideDrawer extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 4),
-                Text(roleLabel, style: const TextStyle(color: Colors.white70, fontSize: 14)),
+                Text(
+                  roleLabel,
+                  style: const TextStyle(color: Colors.white70, fontSize: 14),
+                ),
                 const SizedBox(height: 32),
                 ...menuItems.map(
                   (item) => Padding(
@@ -256,12 +263,20 @@ class PresidentSideDrawer extends StatelessWidget {
                       onTap: () => _handleMenuItemTap(context, item.label),
                       child: Row(
                         children: [
-                          Icon(item.icon, color: Colors.white, size: 22),
+                          Icon(
+                            item.icon,
+                            color: _selectedItem(context) == item.label
+                                ? const Color(0xFFFFD54F)
+                                : Colors.white,
+                            size: 22,
+                          ),
                           const SizedBox(width: 16),
                           Text(
                             item.label,
-                            style: const TextStyle(
-                              color: Colors.white,
+                            style: TextStyle(
+                              color: _selectedItem(context) == item.label
+                                  ? const Color(0xFFFFD54F)
+                                  : Colors.white,
                               fontSize: 16,
                               fontWeight: FontWeight.w600,
                             ),
@@ -286,6 +301,21 @@ class PresidentSideDrawer extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  String? _selectedItem(BuildContext context) {
+    final route = ModalRoute.of(context)?.settings.name;
+    return switch (route) {
+      AppRoutes.consolidation => 'Consolidation',
+      AppRoutes.moduleManagement => 'Module Management',
+      AppRoutes.reports => 'View Reports',
+      AppRoutes.budget => 'Budget',
+      AppRoutes.announcements => 'Announcements',
+      AppRoutes.leadershipProfiles => 'Leadership Profiles',
+      AppRoutes.videoMeetings => 'Video Meetings',
+      AppRoutes.rankings => 'Rankings',
+      _ => null,
+    };
   }
 
   void _handleMenuItemTap(BuildContext context, String itemLabel) {

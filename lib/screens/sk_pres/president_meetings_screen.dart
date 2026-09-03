@@ -41,7 +41,7 @@ class _PresidentMeetingsScreenState extends State<PresidentMeetingsScreen> {
       drawer: const PresidentSideDrawer(),
       backgroundColor: AppColors.lightGrayBg,
       bottomNavigationBar: PresidentBottomNavBar(
-        activeItem: PresidentNavItem.calendar,
+        activeItem: null,
         onItemSelected: _handleNavSelection,
       ),
       floatingActionButton: _canCreate
@@ -537,7 +537,9 @@ class _MeetingItem {
       id: _int(row['meeting_id']),
       title: _text(row['title']).isEmpty ? 'Untitled Meeting' : _text(row['title']),
       agenda: _text(row['agenda']),
-      status: _text(row['status']).isEmpty ? 'scheduled' : _text(row['status']),
+      status: _text(row['status']).isEmpty
+          ? 'scheduled'
+          : _text(row['status']).toLowerCase(),
       callUrl: _text(row['call_url']),
       scheduledAt: parsed ?? DateTime.now(),
     );
@@ -546,13 +548,16 @@ class _MeetingItem {
   bool get isActive {
     final now = DateTime.now();
     return status == 'scheduled' &&
-        scheduledAt.isBefore(now) &&
+        !scheduledAt.isAfter(now) &&
         scheduledAt.add(const Duration(hours: 1)).isAfter(now);
   }
 
-  bool get isScheduled => status == 'scheduled';
-  bool get isPast => status != 'scheduled';
-  bool get canJoin => status == 'scheduled';
+  bool get isScheduled =>
+      status == 'scheduled' && scheduledAt.isAfter(DateTime.now());
+  bool get isPast =>
+      status != 'scheduled' ||
+      (!isActive && !scheduledAt.isAfter(DateTime.now()));
+  bool get canJoin => status == 'scheduled' && !isPast;
 
   String get statusLabel {
     if (status == 'completed') return 'Completed';

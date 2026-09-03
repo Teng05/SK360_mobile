@@ -18,6 +18,20 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isLoading = false;
 
   @override
+  void initState() {
+    super.initState();
+    _loadRememberedEmail();
+  }
+
+  Future<void> _loadRememberedEmail() async {
+    final email = await MobileApiService.rememberedEmail();
+    if (!mounted || email == null) return;
+
+    _emailController.text = email;
+    setState(() => _rememberMe = true);
+  }
+
+  @override
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
@@ -104,35 +118,6 @@ class _LoginScreenState extends State<LoginScreen> {
                 label: _isLoading ? 'Signing In...' : 'Sign In',
                 onPressed: _isLoading ? () {} : _handleLogin,
               ),
-              const SizedBox(height: 16),
-              Center(
-                child: GestureDetector(
-                  onTap: () {
-                    Navigator.pushNamed(context, AppRoutes.registration);
-                  },
-                  child: const Text.rich(
-                    TextSpan(
-                      children: [
-                        TextSpan(
-                          text: "Don't have an account? ",
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: AppColors.lightText,
-                          ),
-                        ),
-                        TextSpan(
-                          text: 'Register',
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: AppColors.primaryRed,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
             ],
           ),
         ),
@@ -154,6 +139,12 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
+      if (_rememberMe) {
+        await MobileApiService.rememberEmail(email);
+      } else {
+        await MobileApiService.clearRememberedEmail();
+      }
+
       final response = await MobileApiService.login(
         email: email,
         password: password,

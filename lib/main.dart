@@ -4,7 +4,6 @@ import 'package:webview_flutter_android/webview_flutter_android.dart';
 import 'routes.dart';
 import 'services/mobile_api_service.dart';
 import 'screens/auth/login_screen.dart';
-import 'screens/auth/registration_screen.dart';
 import 'screens/auth/reset_password_screen.dart';
 import 'screens/shared/mobile_profile_screen.dart';
 import 'screens/shared/chat_screen.dart';
@@ -41,7 +40,6 @@ class MyApp extends StatelessWidget {
         fontFamilyFallback: const ['Arial', 'Helvetica', 'Segoe UI'],
       ),
       routes: {
-        AppRoutes.registration: (context) => const RegistrationScreen(),
         AppRoutes.login: (context) => const LoginScreen(),
         AppRoutes.resetPassword: (context) => const ResetPasswordScreen(),
         AppRoutes.presidentHome: (context) => const SkPresHomeScreen(),
@@ -92,10 +90,10 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   void initState() {
     super.initState();
-    _navigateToRegistration();
+    _navigateToLogin();
   }
 
-  Future<void> _navigateToRegistration() async {
+  Future<void> _navigateToLogin() async {
     await Future.delayed(const Duration(seconds: 5));
     if (!mounted) return;
     Navigator.pushReplacementNamed(context, AppRoutes.login);

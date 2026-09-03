@@ -22,7 +22,6 @@ class _MobileProfileScreenState extends State<MobileProfileScreen> {
       user['first_name']?.toString(),
       user['last_name']?.toString(),
     ].where((part) => part != null && part.trim().isNotEmpty).join(' ');
-    final role = user['role']?.toString() ?? '';
 
     return Scaffold(
       backgroundColor: AppColors.lightGrayBg,
@@ -94,17 +93,6 @@ class _MobileProfileScreenState extends State<MobileProfileScreen> {
               label: 'Change Password',
               onTap: _showPasswordDialog,
             ),
-            if (role != 'youth')
-              _ProfileAction(
-                icon: Icons.receipt_long,
-                label: 'Reports',
-                onTap: () => Navigator.pushNamed(context, AppRoutes.reports),
-              ),
-            _ProfileAction(
-              icon: Icons.emoji_events_outlined,
-              label: 'Rankings',
-              onTap: () => Navigator.pushNamed(context, AppRoutes.rankings),
-            ),
             _ProfileAction(
               icon: Icons.logout,
               label: 'Logout',
@@ -136,7 +124,7 @@ class _MobileProfileScreenState extends State<MobileProfileScreen> {
     final firstName = TextEditingController(text: user['first_name']?.toString() ?? '');
     final lastName = TextEditingController(text: user['last_name']?.toString() ?? '');
 
-    await showDialog<void>(
+    final values = await showDialog<Map<String, String>>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Edit Profile'),
@@ -161,13 +149,16 @@ class _MobileProfileScreenState extends State<MobileProfileScreen> {
             child: const Text('Cancel'),
           ),
           ElevatedButton(
-            onPressed: () async {
+            onPressed: () {
               final first = firstName.text.trim();
               final last = lastName.text.trim();
               if (first.isEmpty || last.isEmpty) return;
 
-              Navigator.pop(dialogContext);
-              await _saveProfile(first, last);
+              FocusScope.of(dialogContext).unfocus();
+              Navigator.pop(dialogContext, {
+                'first': first,
+                'last': last,
+              });
             },
             child: const Text('Save'),
           ),
@@ -175,64 +166,155 @@ class _MobileProfileScreenState extends State<MobileProfileScreen> {
       ),
     );
 
+    FocusManager.instance.primaryFocus?.unfocus();
+    await Future<void>.delayed(const Duration(milliseconds: 150));
     firstName.dispose();
     lastName.dispose();
+
+    if (values != null && mounted) {
+      await _saveProfile(values['first']!, values['last']!);
+    }
   }
 
   Future<void> _showPasswordDialog() async {
     final current = TextEditingController();
     final password = TextEditingController();
     final confirm = TextEditingController();
+    final code = TextEditingController();
+    var otpSent = false;
+    var isLoading = false;
+    var error = '';
 
-    await showDialog<void>(
+    final changed = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Change Password'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: current,
-              obscureText: true,
-              decoration: const InputDecoration(labelText: 'Current password'),
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) => AlertDialog(
+            title: Text(otpSent ? 'Verify Password Change' : 'Change Password'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (!otpSent) ...[
+                  TextField(
+                    controller: current,
+                    obscureText: true,
+                    decoration: const InputDecoration(labelText: 'Current password'),
+                  ),
+                  TextField(
+                    controller: password,
+                    obscureText: true,
+                    decoration: const InputDecoration(labelText: 'New password'),
+                  ),
+                  TextField(
+                    controller: confirm,
+                    obscureText: true,
+                    decoration: const InputDecoration(labelText: 'Confirm password'),
+                  ),
+                ] else
+                  TextField(
+                    controller: code,
+                    keyboardType: TextInputType.number,
+                    maxLength: 6,
+                    decoration: const InputDecoration(labelText: 'Enter the 6-digit OTP'),
+                  ),
+                if (error.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text(
+                      error,
+                      style: const TextStyle(color: AppColors.primaryRed),
+                    ),
+                  ),
+              ],
             ),
-            TextField(
-              controller: password,
-              obscureText: true,
-              decoration: const InputDecoration(labelText: 'New password'),
-            ),
-            TextField(
-              controller: confirm,
-              obscureText: true,
-              decoration: const InputDecoration(labelText: 'Confirm password'),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              if (current.text.isEmpty ||
-                  password.text.isEmpty ||
-                  confirm.text.isEmpty) {
-                return;
-              }
+            actions: [
+              TextButton(
+                onPressed: isLoading ? null : () => Navigator.pop(dialogContext),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: isLoading
+                    ? null
+                    : () async {
+                        if (!otpSent) {
+                          if (current.text.isEmpty ||
+                              password.text.isEmpty ||
+                              confirm.text.isEmpty) {
+                            setDialogState(() => error = 'Complete all password fields.');
+                            return;
+                          }
+                          if (password.text != confirm.text) {
+                            setDialogState(() => error = 'New password and confirmation do not match.');
+                            return;
+                          }
 
-              Navigator.pop(dialogContext);
-              await _savePassword(current.text, password.text, confirm.text);
-            },
-            child: const Text('Save'),
+                          setDialogState(() {
+                            isLoading = true;
+                            error = '';
+                          });
+                          try {
+                            await MobileApiService.requestPasswordChange(
+                              currentPassword: current.text,
+                              password: password.text,
+                              passwordConfirmation: confirm.text,
+                            );
+                            setDialogState(() {
+                              otpSent = true;
+                              isLoading = false;
+                            });
+                          } on MobileApiException catch (exception) {
+                            setDialogState(() {
+                              error = exception.message;
+                              isLoading = false;
+                            });
+                          }
+                        } else {
+                          if (code.text.trim().length != 6) {
+                            setDialogState(() => error = 'Enter the complete 6-digit OTP.');
+                            return;
+                          }
+
+                          setDialogState(() {
+                            isLoading = true;
+                            error = '';
+                          });
+                          try {
+                            await MobileApiService.verifyPasswordChange(
+                              code: code.text.trim(),
+                            );
+                            if (dialogContext.mounted) {
+                              FocusManager.instance.primaryFocus?.unfocus();
+                              await Future<void>.delayed(
+                                const Duration(milliseconds: 150),
+                              );
+                              Navigator.pop(dialogContext, true);
+                            }
+                          } on MobileApiException catch (exception) {
+                            setDialogState(() {
+                              error = exception.message;
+                              isLoading = false;
+                            });
+                          }
+                        }
+                      },
+                child: Text(otpSent ? 'Verify' : 'Send OTP'),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
 
     current.dispose();
     password.dispose();
     confirm.dispose();
+    code.dispose();
+
+    if (changed == true && mounted) {
+      await Future<void>.delayed(const Duration(milliseconds: 150));
+      _showMessage('Password updated successfully.');
+    }
   }
 
   Future<void> _saveProfile(String firstName, String lastName) async {
@@ -253,25 +335,6 @@ class _MobileProfileScreenState extends State<MobileProfileScreen> {
     }
   }
 
-  Future<void> _savePassword(
-    String currentPassword,
-    String password,
-    String confirmation,
-  ) async {
-    setState(() => _isSaving = true);
-    try {
-      await MobileApiService.updatePassword(
-        currentPassword: currentPassword,
-        password: password,
-        passwordConfirmation: confirmation,
-      );
-      if (mounted) _showMessage('Password updated.');
-    } on MobileApiException catch (exception) {
-      if (mounted) _showMessage(exception.message);
-    } finally {
-      if (mounted) setState(() => _isSaving = false);
-    }
-  }
 
   void _showMessage(String message) {
     ScaffoldMessenger.of(context).showSnackBar(

@@ -47,6 +47,18 @@ class _PrototypeCalendarScreenState extends State<PrototypeCalendarScreen> {
       key: _scaffoldKey,
       drawer: const PresidentSideDrawer(),
       backgroundColor: AppColors.lightGrayBg,
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(86),
+        child: SafeArea(
+          bottom: false,
+          child: PresidentHeader(
+            leading: PresidentHeaderLeading.menu,
+            onLeadingTap: () => _scaffoldKey.currentState?.openDrawer(),
+            title: 'Calendar',
+            subtitle: barangay,
+          ),
+        ),
+      ),
       bottomNavigationBar: PresidentBottomNavBar(
         activeItem: PresidentNavItem.calendar,
         onItemSelected: _handleNavSelection,
@@ -57,10 +69,6 @@ class _PrototypeCalendarScreenState extends State<PrototypeCalendarScreen> {
           child: ListView(
             padding: const EdgeInsets.only(bottom: 24),
             children: [
-              _CalendarTopBar(
-                barangay: barangay,
-                onMenu: () => _scaffoldKey.currentState?.openDrawer(),
-              ),
               if (_isLoading) const LinearProgressIndicator(minHeight: 3),
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
@@ -405,50 +413,6 @@ class _PrototypeCalendarScreenState extends State<PrototypeCalendarScreen> {
   void _showMessage(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message), backgroundColor: AppColors.primaryRed),
-    );
-  }
-}
-
-class _CalendarTopBar extends StatelessWidget {
-  final String barangay;
-  final VoidCallback onMenu;
-
-  const _CalendarTopBar({required this.barangay, required this.onMenu});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 60,
-      color: const Color(0xFFF10612),
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      child: Row(
-        children: [
-          IconButton(
-            onPressed: onMenu,
-            icon: const Icon(Icons.menu, color: Colors.white, size: 20),
-          ),
-          Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Text(
-                  'SK 360',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                Text(
-                  barangay,
-                  style: const TextStyle(color: Colors.white70, fontSize: 10),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 48),
-        ],
-      ),
     );
   }
 }

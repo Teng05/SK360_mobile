@@ -46,7 +46,7 @@ class _PresidentReportsScreenState extends State<PresidentReportsScreen> {
       drawer: const PresidentSideDrawer(),
       backgroundColor: AppColors.lightGrayBg,
       bottomNavigationBar: PresidentBottomNavBar(
-        activeItem: PresidentNavItem.home,
+        activeItem: null,
         onItemSelected: _handleNavSelection,
       ),
       body: SafeArea(

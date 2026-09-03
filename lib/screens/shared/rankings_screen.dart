@@ -44,7 +44,7 @@ class _RankingsScreenState extends State<RankingsScreen> {
           ? PresidentBottomNavBar(
               activeItem: _isYouth
                   ? PresidentNavItem.rankings
-                  : PresidentNavItem.home,
+                  : null,
               onItemSelected: _handleNavSelection,
             )
           : null,
