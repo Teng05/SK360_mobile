@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -8,7 +9,7 @@ class MobileApiService {
   static const String _rememberedEmailKey = 'remembered_email';
   static const String _accessTokenKey = 'access_token';
   static const String _userKey = 'current_user';
-  static const String baseUrl = 'http://192.168.68.108:8000/api/mobile';
+  static const String baseUrl = 'https://sk360lipacity.org/api/mobile';
   static String webUrl(String path) {
     final root = baseUrl.replaceFirst(RegExp(r'/api/mobile$'), '');
     final normalizedPath = path.startsWith('/') ? path : '/$path';
@@ -55,8 +56,6 @@ class MobileApiService {
     currentUser = response['user'] as Map<String, dynamic>?;
 
     await _saveSession();
-
-    syncedData = await sync();
 
     return response;
   }
@@ -395,6 +394,7 @@ class MobileApiService {
   }) async {
     final uri = Uri.parse('$baseUrl$path');
     final client = HttpClient();
+    client.connectionTimeout = const Duration(seconds: 10);
     final boundary = '----sk360${DateTime.now().microsecondsSinceEpoch}';
 
     try {
@@ -430,8 +430,13 @@ class MobileApiService {
       request.add(fileBytes);
       writeText('\r\n--$boundary--\r\n');
 
-      final response = await request.close();
-      final responseBody = await response.transform(utf8.decoder).join();
+      final response = await request.close().timeout(
+        const Duration(seconds: 15),
+      );
+      final responseBody = await response
+          .transform(utf8.decoder)
+          .join()
+          .timeout(const Duration(seconds: 15));
       final decoded = responseBody.isEmpty
           ? <String, dynamic>{}
           : jsonDecode(responseBody) as Map<String, dynamic>;
@@ -447,6 +452,10 @@ class MobileApiService {
     } on SocketException {
       throw MobileApiException(
         'Cannot reach the web server. Make sure Laravel is running and your phone is on the same Wi-Fi.',
+      );
+    } on TimeoutException {
+      throw MobileApiException(
+        'The web server took too long to respond. Check that Laravel is running and your phone is on the same Wi-Fi.',
       );
     } finally {
       client.close(force: true);
