@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../routes.dart';
 import '../../services/mobile_api_service.dart';
 import '../../ui/app_ui.dart';
 import '../../widgets/president_components.dart';
@@ -17,9 +16,6 @@ class _PresidentLeadershipScreenState extends State<PresidentLeadershipScreen> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   bool _isLoading = false;
   String _selectedBarangayId = 'all';
-  bool get _isYouth =>
-      MobileApiService.currentUser?['role']?.toString() == 'youth';
-
   @override
   void initState() {
     super.initState();
@@ -37,12 +33,10 @@ class _PresidentLeadershipScreenState extends State<PresidentLeadershipScreen> {
 
     return Scaffold(
       key: _scaffoldKey,
-      drawer: _isYouth ? null : const PresidentSideDrawer(),
+      drawer: const PresidentSideDrawer(),
       backgroundColor: AppColors.lightGrayBg,
       bottomNavigationBar: PresidentBottomNavBar(
-        activeItem: _isYouth
-            ? PresidentNavItem.leadership
-            : null,
+        activeItem: null,
         onItemSelected: _handleNavSelection,
       ),
       body: SafeArea(
@@ -52,12 +46,8 @@ class _PresidentLeadershipScreenState extends State<PresidentLeadershipScreen> {
             padding: const EdgeInsets.only(bottom: 24),
             children: [
               PresidentHeader(
-                leading: _isYouth
-                    ? PresidentHeaderLeading.none
-                    : PresidentHeaderLeading.menu,
-                onLeadingTap: _isYouth
-                    ? null
-                    : () => _scaffoldKey.currentState?.openDrawer(),
+                leading: PresidentHeaderLeading.menu,
+                onLeadingTap: () => _scaffoldKey.currentState?.openDrawer(),
                 title: 'Leadership',
                 subtitle: 'Barangay councils',
                 trailing: [
@@ -66,10 +56,6 @@ class _PresidentLeadershipScreenState extends State<PresidentLeadershipScreen> {
                       onPressed: _isLoading ? null : _showAddCouncilDialog,
                       icon: const Icon(Icons.person_add_alt_1, color: Colors.white),
                     ),
-                  IconButton(
-                    onPressed: _isLoading ? null : _refresh,
-                    icon: const Icon(Icons.refresh, color: Colors.white),
-                  ),
                 ],
               ),
               if (_isLoading) const LinearProgressIndicator(minHeight: 3),
@@ -327,7 +313,7 @@ class _PresidentLeadershipScreenState extends State<PresidentLeadershipScreen> {
 
   bool get _isLocalOfficial {
     final role = MobileApiService.currentUser?['role']?.toString() ?? '';
-    return role == 'sk_chairman' || role == 'sk_secretary' || role == 'youth';
+    return role == 'sk_chairman' || role == 'sk_secretary';
   }
 
   String get _currentBarangayId =>

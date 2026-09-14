@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 
-import '../../routes.dart';
 import '../../services/mobile_api_service.dart';
 import '../../ui/app_ui.dart';
 import '../../widgets/president_components.dart';
+import '../shared/meeting_webview_screen.dart';
 
 class ModuleManagementScreen extends StatefulWidget {
   const ModuleManagementScreen({super.key});
@@ -52,12 +52,6 @@ class _ModuleManagementScreenState extends State<ModuleManagementScreen> {
                 onLeadingTap: () => _scaffoldKey.currentState?.openDrawer(),
                 title: 'Module Management',
                 subtitle: 'Submission slots',
-                trailing: [
-                  IconButton(
-                    onPressed: _isLoading ? null : _loadSlots,
-                    icon: const Icon(Icons.refresh, color: Colors.white),
-                  ),
-                ],
               ),
               if (_isLoading) const LinearProgressIndicator(minHeight: 3),
               Padding(
@@ -86,6 +80,8 @@ class _ModuleManagementScreenState extends State<ModuleManagementScreen> {
                     child: _SlotCard(
                       slot: slot,
                       onDelete: () => _deleteSlot(slot),
+                      onToggle: () => _toggleSlot(slot),
+                      onView: () => _viewSubmissions(slot),
                     ),
                   ),
                 ),
@@ -317,6 +313,37 @@ class _ModuleManagementScreenState extends State<ModuleManagementScreen> {
     }
   }
 
+  Future<void> _toggleSlot(Map<String, dynamic> slot) async {
+    final slotId = int.tryParse('${slot['slot_id']}');
+    if (slotId == null) return;
+
+    setState(() => _isLoading = true);
+    try {
+      await MobileApiService.toggleSubmissionSlot(slotId);
+      await _loadSlots();
+      if (mounted) _showMessage('Submission slot status updated.');
+    } on MobileApiException catch (exception) {
+      if (mounted) _showMessage(exception.message);
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _viewSubmissions(Map<String, dynamic> slot) async {
+    final slotId = int.tryParse('${slot['slot_id']}');
+    if (slotId == null) return;
+
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => SubmissionSlotSubmissionsPage(
+          slotId: slotId,
+          title: slot['title']?.toString() ?? 'Submissions',
+        ),
+      ),
+    );
+  }
+
   void _showMessage(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message), backgroundColor: AppColors.primaryRed),
@@ -325,6 +352,191 @@ class _ModuleManagementScreenState extends State<ModuleManagementScreen> {
 
   void _handleNavSelection(PresidentNavItem item) {
     handleRoleNavSelection(context, item);
+  }
+}
+
+class SubmissionSlotSubmissionsPage extends StatefulWidget {
+  final int slotId;
+  final String title;
+
+  const SubmissionSlotSubmissionsPage({
+    super.key,
+    required this.slotId,
+    required this.title,
+  });
+
+  @override
+  State<SubmissionSlotSubmissionsPage> createState() =>
+      _SubmissionSlotSubmissionsPageState();
+}
+
+class _SubmissionSlotSubmissionsPageState
+    extends State<SubmissionSlotSubmissionsPage> {
+  final TextEditingController _searchController = TextEditingController();
+  bool _isLoading = true;
+  String? _error;
+  List<Map<String, dynamic>> _submissions = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSubmissions();
+    _searchController.addListener(() => setState(() {}));
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadSubmissions() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    try {
+      final response = await MobileApiService.submissionSlotSubmissions(
+        widget.slotId,
+      );
+      if (!mounted) return;
+      setState(() {
+        _submissions = (response['submissions'] as List<dynamic>? ?? [])
+            .map((row) => Map<String, dynamic>.from(row as Map))
+            .toList();
+      });
+    } on MobileApiException catch (exception) {
+      if (mounted) setState(() => _error = exception.message);
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final query = _searchController.text.trim().toLowerCase();
+    final filtered = _submissions.where((row) {
+      final name = row['barangay_name']?.toString().toLowerCase() ?? '';
+      return query.isEmpty || name.contains(query);
+    }).toList();
+
+    return Scaffold(
+      backgroundColor: AppColors.lightGrayBg,
+      appBar: AppBar(
+        title: Text(widget.title),
+        backgroundColor: AppColors.primaryRed,
+        foregroundColor: Colors.white,
+      ),
+      body: RefreshIndicator(
+        onRefresh: _loadSubmissions,
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            Text(
+              'Barangay Submissions',
+              style: const TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: AppColors.darkGray,
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                hintText: 'Search barangay...',
+                prefixIcon: const Icon(Icons.search),
+                filled: true,
+                fillColor: Colors.white,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            if (_isLoading)
+              const Padding(
+                padding: EdgeInsets.all(32),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else if (_error != null)
+              _SubmissionMessage(
+                message: _error!,
+                onRetry: _loadSubmissions,
+              )
+            else if (filtered.isEmpty)
+              const _SubmissionMessage(message: 'No barangays found.')
+            else
+              ...filtered.map((row) => _SubmissionRow(row: row)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SubmissionRow extends StatelessWidget {
+  final Map<String, dynamic> row;
+
+  const _SubmissionRow({required this.row});
+
+  @override
+  Widget build(BuildContext context) {
+    final submitted = row['submitted'] == true;
+    final fileUrl = row['file_url']?.toString();
+    final name = row['barangay_name']?.toString() ?? 'Barangay';
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      color: Colors.white,
+      child: ListTile(
+        title: Text(name, style: const TextStyle(fontWeight: FontWeight.bold)),
+        subtitle: Text(submitted ? 'Submitted' : 'No submission yet'),
+        leading: Icon(
+          submitted ? Icons.check_circle : Icons.hourglass_empty,
+          color: submitted ? Colors.green : AppColors.lightText,
+        ),
+        trailing: submitted && fileUrl != null && fileUrl.isNotEmpty
+            ? TextButton(
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => MeetingWebViewScreen(
+                      url: fileUrl,
+                      title: '$name Submitted File',
+                    ),
+                  ),
+                ),
+                child: const Text('View File'),
+              )
+            : null,
+      ),
+    );
+  }
+}
+
+class _SubmissionMessage extends StatelessWidget {
+  final String message;
+  final VoidCallback? onRetry;
+
+  const _SubmissionMessage({required this.message, this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(32),
+      child: Column(
+        children: [
+          Text(message, textAlign: TextAlign.center),
+          if (onRetry != null) ...[
+            const SizedBox(height: 12),
+            OutlinedButton(onPressed: onRetry, child: const Text('Retry')),
+          ],
+        ],
+      ),
+    );
   }
 }
 
@@ -356,8 +568,15 @@ class _SummaryCard extends StatelessWidget {
 class _SlotCard extends StatelessWidget {
   final Map<String, dynamic> slot;
   final VoidCallback onDelete;
+  final VoidCallback onToggle;
+  final VoidCallback onView;
 
-  const _SlotCard({required this.slot, required this.onDelete});
+  const _SlotCard({
+    required this.slot,
+    required this.onDelete,
+    required this.onToggle,
+    required this.onView,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -371,8 +590,10 @@ class _SlotCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: AppColors.borderPink),
       ),
-      child: Row(
+      child: Column(
         children: [
+          Row(
+            children: [
           CircleAvatar(
             backgroundColor: status == 'open' ? const Color(0xFFE8F5E9) : AppColors.softPink,
             child: Icon(
@@ -401,6 +622,32 @@ class _SlotCard extends StatelessWidget {
           IconButton(
             onPressed: onDelete,
             icon: const Icon(Icons.delete_outline, color: AppColors.primaryRed),
+          ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: onView,
+                  icon: const Icon(Icons.people_alt_outlined, size: 16),
+                  label: const Text('View Barangays'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: onToggle,
+                  icon: Icon(status == 'open' ? Icons.lock_outline : Icons.lock_open, size: 16),
+                  label: Text(status == 'open' ? 'Close' : 'Open'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: status == 'open' ? Colors.orange : Colors.green,
+                    foregroundColor: Colors.white,
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ),

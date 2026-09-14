@@ -24,8 +24,8 @@ class NativeAgoraMeetingScreen extends StatefulWidget {
 
 class _NativeAgoraMeetingScreenState extends State<NativeAgoraMeetingScreen> {
   RtcEngine? _engine;
-  int? _remoteUid;
-  int? _localUid;
+  final List<int> _remoteUids = [];
+  int? _activeSpeakerUid;
   String _channel = '';
   String _status = 'Joining meeting...';
   bool _muted = false;
@@ -77,23 +77,27 @@ class _NativeAgoraMeetingScreenState extends State<NativeAgoraMeetingScreen> {
           onJoinChannelSuccess: (connection, elapsed) {
             setState(() {
               _joined = true;
-              _localUid = connection.localUid;
               _status = 'Connected';
             });
           },
           onUserJoined: (connection, remoteUid, elapsed) {
             setState(() {
-              _remoteUid = remoteUid;
+              if (!_remoteUids.contains(remoteUid)) _remoteUids.add(remoteUid);
               _status = 'Participant joined';
             });
           },
           onUserOffline: (connection, remoteUid, reason) {
-            if (_remoteUid == remoteUid) {
-              setState(() {
-                _remoteUid = null;
-                _status = 'Waiting for other participants...';
-              });
-            }
+            setState(() {
+              _remoteUids.remove(remoteUid);
+              if (_activeSpeakerUid == remoteUid) _activeSpeakerUid = null;
+              _status = _remoteUids.isEmpty
+                  ? 'Waiting for other participants...'
+                  : 'Connected';
+            });
+          },
+          onActiveSpeaker: (connection, uid) {
+            if (uid == 0 || !_remoteUids.contains(uid)) return;
+            setState(() => _activeSpeakerUid = uid);
           },
           onError: (err, msg) {
             setState(() => _status = 'Agora error: $msg');
@@ -105,12 +109,16 @@ class _NativeAgoraMeetingScreenState extends State<NativeAgoraMeetingScreen> {
       await engine.setClientRole(role: ClientRoleType.clientRoleBroadcaster);
       await engine.enableAudio();
       await engine.enableVideo();
+      await engine.enableAudioVolumeIndication(
+        interval: 200,
+        smooth: 3,
+        reportVad: true,
+      );
       await engine.startPreview();
 
       setState(() {
         _engine = engine;
         _channel = channel;
-        _localUid = uid;
         _joined = true;
         _status = 'Connected';
       });
@@ -173,33 +181,31 @@ class _NativeAgoraMeetingScreenState extends State<NativeAgoraMeetingScreen> {
         child: Column(
           children: [
             Expanded(
-              child: Stack(
-                children: [
-                  Positioned.fill(child: _remoteView()),
-                  Positioned(
-                    right: 16,
-                    bottom: 16,
-                    width: 120,
-                    height: 160,
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(14),
-                      child: _localView(),
-                    ),
-                  ),
-                ],
-              ),
+              child: _participantGrid(),
             ),
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.all(14),
+              padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
               color: const Color(0xFF0F172A),
               child: Column(
                 children: [
                   Text(
-                    _channel.isEmpty ? _status : '$_status  |  $_channel',
+                    _channel.isEmpty
+                        ? _status
+                        : '$_status  |  $_channel',
                     style: const TextStyle(color: Colors.white70),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 10),
+                  OutlinedButton.icon(
+                    onPressed: _showParticipants,
+                    icon: const Icon(Icons.people_alt_outlined),
+                    label: Text('Participants (${_remoteUids.length + 1})'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.white,
+                      side: const BorderSide(color: Colors.white38),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
@@ -232,13 +238,70 @@ class _NativeAgoraMeetingScreenState extends State<NativeAgoraMeetingScreen> {
     );
   }
 
-  Widget _remoteView() {
+  Widget _participantGrid() {
+    final orderedRemoteUids = [..._remoteUids];
+    if (_activeSpeakerUid != null && orderedRemoteUids.remove(_activeSpeakerUid)) {
+      orderedRemoteUids.insert(0, _activeSpeakerUid!);
+    }
+    final visibleRemoteUids = orderedRemoteUids.take(5).toList();
+    final totalTiles = visibleRemoteUids.length + 1;
+
+    if (_engine == null) {
+      return const Center(
+        child: Text('Joining meeting...', style: TextStyle(color: Colors.white70)),
+      );
+    }
+
+    return GridView.builder(
+      padding: const EdgeInsets.all(10),
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: totalTiles <= 1 ? 1 : totalTiles <= 4 ? 2 : 3,
+        crossAxisSpacing: 8,
+        mainAxisSpacing: 8,
+        childAspectRatio: 0.82,
+      ),
+      itemCount: totalTiles,
+      itemBuilder: (context, index) {
+        final isLocal = index == visibleRemoteUids.length;
+        final uid = isLocal ? null : visibleRemoteUids[index];
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(14),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              isLocal ? _localView() : _remoteView(uid!),
+              Positioned(
+                left: 8,
+                bottom: 8,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: Colors.black54,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    child: Text(
+                      isLocal
+                          ? 'You'
+                          : (_activeSpeakerUid == uid ? 'Speaking' : 'Participant'),
+                      style: const TextStyle(color: Colors.white, fontSize: 11),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _remoteView(int remoteUid) {
     final engine = _engine;
-    final remoteUid = _remoteUid;
-    if (engine == null || remoteUid == null) {
+    if (engine == null) {
       return const Center(
         child: Text(
-          'Waiting for other participants...',
+          'Joining meeting...',
           style: TextStyle(color: Colors.white70),
         ),
       );
@@ -265,7 +328,42 @@ class _NativeAgoraMeetingScreenState extends State<NativeAgoraMeetingScreen> {
     return AgoraVideoView(
       controller: VideoViewController(
         rtcEngine: engine,
-        canvas: VideoCanvas(uid: _localUid ?? 0),
+        // Agora uses UID 0 for the local camera canvas. The token UID is only
+        // needed when joining the channel and must not be used for preview.
+        canvas: const VideoCanvas(uid: 0),
+      ),
+    );
+  }
+
+  void _showParticipants() {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: const Color(0xFF0F172A),
+      builder: (context) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          padding: const EdgeInsets.all(18),
+          children: [
+            Text(
+              'Participants (${_remoteUids.length + 1})',
+              style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 12),
+            const ListTile(
+              leading: Icon(Icons.person, color: Colors.white70),
+              title: Text('You', style: TextStyle(color: Colors.white)),
+            ),
+            ..._remoteUids.map(
+              (uid) => ListTile(
+                leading: const Icon(Icons.person_outline, color: Colors.white70),
+                title: Text('Participant $uid', style: const TextStyle(color: Colors.white)),
+                trailing: _activeSpeakerUid == uid
+                    ? const Text('Speaking', style: TextStyle(color: Colors.greenAccent))
+                    : null,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

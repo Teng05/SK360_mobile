@@ -115,32 +115,7 @@ class PresidentBottomNavBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final role = (MobileApiService.currentUser?['role'] ?? '').toString();
-    final items = role == 'youth'
-        ? const [
-            _BottomItem(PresidentNavItem.home, 'Home', Icons.home_outlined),
-            _BottomItem(
-              PresidentNavItem.announcements,
-              'News',
-              Icons.campaign_outlined,
-            ),
-            _BottomItem(
-              PresidentNavItem.leadership,
-              'Leaders',
-              Icons.badge_outlined,
-            ),
-            _BottomItem(
-              PresidentNavItem.rankings,
-              'Ranks',
-              Icons.emoji_events_outlined,
-            ),
-            _BottomItem(
-              PresidentNavItem.profile,
-              'Profile',
-              Icons.person_outline,
-            ),
-          ]
-        : _items;
+    final items = _items;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
@@ -211,25 +186,14 @@ class PresidentSideDrawer extends StatelessWidget {
     _DrawerItem('Rankings', Icons.emoji_events_outlined),
   ];
 
-  static final List<_DrawerItem> _youthItems = [
-    _DrawerItem('Announcements', Icons.campaign_outlined),
-    _DrawerItem('Leadership Profiles', Icons.badge_outlined),
-    _DrawerItem('Rankings', Icons.emoji_events_outlined),
-  ];
-
   @override
   Widget build(BuildContext context) {
     final role = _currentRole();
     final isOfficial = role == 'sk_chairman' || role == 'sk_secretary';
-    final menuItems = role == 'youth'
-        ? _youthItems
-        : isOfficial
-        ? _chairmanItems
-        : _presidentItems;
+    final menuItems = isOfficial ? _chairmanItems : _presidentItems;
     final roleLabel = switch (role) {
       'sk_chairman' => 'SK Chairman',
       'sk_secretary' => 'SK Secretary',
-      'youth' => 'Youth',
       _ => 'SK Federation President',
     };
 
@@ -288,7 +252,7 @@ class PresidentSideDrawer extends StatelessWidget {
                 ),
                 const Spacer(),
                 const Text(
-                  'Empowering Youth Governance',
+                  'Empowering SK Governance',
                   style: TextStyle(
                     color: Colors.white70,
                     fontSize: 12,
@@ -373,22 +337,22 @@ void handleRoleNavSelection(BuildContext context, PresidentNavItem item) {
       Navigator.pushReplacementNamed(context, _homeRouteForCurrentRole());
       break;
     case PresidentNavItem.calendar:
-      Navigator.pushReplacementNamed(context, AppRoutes.presidentCalendar);
+      Navigator.pushNamed(context, AppRoutes.presidentCalendar);
       break;
     case PresidentNavItem.chat:
-      Navigator.pushReplacementNamed(context, AppRoutes.presidentMessages);
+      Navigator.pushNamed(context, AppRoutes.presidentMessages);
       break;
     case PresidentNavItem.announcements:
-      Navigator.pushReplacementNamed(context, AppRoutes.announcements);
+      Navigator.pushNamed(context, AppRoutes.announcements);
       break;
     case PresidentNavItem.leadership:
-      Navigator.pushReplacementNamed(context, AppRoutes.leadershipProfiles);
+      Navigator.pushNamed(context, AppRoutes.leadershipProfiles);
       break;
     case PresidentNavItem.rankings:
-      Navigator.pushReplacementNamed(context, AppRoutes.rankings);
+      Navigator.pushNamed(context, AppRoutes.rankings);
       break;
     case PresidentNavItem.profile:
-      Navigator.pushReplacementNamed(context, AppRoutes.profile);
+      Navigator.pushNamed(context, AppRoutes.profile);
       break;
   }
 }
@@ -398,7 +362,6 @@ String _homeRouteForCurrentRole() {
   return switch (role) {
     'sk_chairman' => AppRoutes.chairmanHome,
     'sk_secretary' => AppRoutes.secretaryHome,
-    'youth' => AppRoutes.youthHome,
     _ => AppRoutes.presidentHome,
   };
 }

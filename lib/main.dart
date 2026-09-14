@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:webview_flutter_android/webview_flutter_android.dart';
 
 import 'routes.dart';
@@ -19,7 +22,6 @@ import 'screens/sk_pres/president_leadership_screen.dart';
 import 'screens/sk_pres/president_reports_screen.dart';
 import 'screens/sk_pres/sk_pres_home_screen.dart';
 import 'screens/sk_secretary/sk_secretary_home_screen.dart';
-import 'screens/youth/youth_home_screen.dart';
 import 'ui/app_ui.dart';
 
 void main() {
@@ -32,50 +34,163 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final routeBuilders = <String, WidgetBuilder>{
+      AppRoutes.login: (context) => const LoginScreen(),
+      AppRoutes.resetPassword: (context) => const ResetPasswordScreen(),
+      AppRoutes.presidentHome: (context) => const SkPresHomeScreen(),
+      AppRoutes.chairmanHome: (context) => const ChairmanHomeScreen(),
+      AppRoutes.secretaryHome: (context) => const SkSecretaryHomeScreen(),
+      AppRoutes.presidentMessages: (context) => const ChatScreen(),
+      AppRoutes.presidentCalendar: (context) => const PrototypeCalendarScreen(),
+      AppRoutes.videoMeetings: (context) => const PresidentMeetingsScreen(),
+      AppRoutes.profile: (context) => const MobileProfileScreen(),
+      AppRoutes.announcements: (context) => const SyncedDataScreen(
+        title: 'Announcements',
+        subtitle: 'Public posts',
+        dataKey: 'wall_posts',
+        icon: Icons.campaign_outlined,
+        allowCreatePost: true,
+      ),
+      AppRoutes.leadershipProfiles: (context) =>
+          const PresidentLeadershipScreen(),
+      AppRoutes.rankings: (context) => const RankingsScreen(),
+      AppRoutes.reports: (context) {
+        final role = MobileApiService.currentUser?['role']?.toString() ?? '';
+        return role == 'sk_chairman' || role == 'sk_secretary'
+            ? const OfficialSubmissionScreen(kind: SubmissionKind.report)
+            : const PresidentReportsScreen();
+      },
+      AppRoutes.budget: (context) =>
+          const OfficialSubmissionScreen(kind: SubmissionKind.budget),
+      AppRoutes.moduleManagement: (context) => const ModuleManagementScreen(),
+      AppRoutes.consolidation: (context) => const ConsolidationScreen(),
+    };
+    const homeRoutes = {
+      AppRoutes.presidentHome,
+      AppRoutes.chairmanHome,
+      AppRoutes.secretaryHome,
+    };
+
     return MaterialApp(
-      title: 'SK 360° - Youth Governance Platform',
+      title: 'SK 360° - SK Governance Platform',
       theme: ThemeData(
         useMaterial3: true,
         fontFamily: 'Geist',
         fontFamilyFallback: const ['Arial', 'Helvetica', 'Segoe UI'],
       ),
-      routes: {
-        AppRoutes.login: (context) => const LoginScreen(),
-        AppRoutes.resetPassword: (context) => const ResetPasswordScreen(),
-        AppRoutes.presidentHome: (context) => const SkPresHomeScreen(),
-        AppRoutes.chairmanHome: (context) => const ChairmanHomeScreen(),
-        AppRoutes.secretaryHome: (context) => const SkSecretaryHomeScreen(),
-        AppRoutes.youthHome: (context) => const YouthHomeScreen(),
-        AppRoutes.presidentMessages: (context) => const ChatScreen(),
-        AppRoutes.presidentCalendar: (context) =>
-            const PrototypeCalendarScreen(),
-        AppRoutes.videoMeetings: (context) => const PresidentMeetingsScreen(),
-        AppRoutes.profile: (context) => const MobileProfileScreen(),
-        AppRoutes.announcements: (context) => const SyncedDataScreen(
-          title: 'Announcements',
-          subtitle: 'Public posts',
-          dataKey: 'wall_posts',
-          icon: Icons.campaign_outlined,
-          allowCreatePost: true,
+      routes: routeBuilders.map(
+        (name, builder) => MapEntry(
+          name,
+          (context) => homeRoutes.contains(name)
+              ? builder(context)
+              : BackNavigationGuard(child: builder(context)),
         ),
-        AppRoutes.leadershipProfiles: (context) =>
-            const PresidentLeadershipScreen(),
-        AppRoutes.rankings: (context) => const RankingsScreen(),
-        AppRoutes.reports: (context) {
-          final role =
-              MobileApiService.currentUser?['role']?.toString() ?? '';
-          return role == 'sk_chairman' || role == 'sk_secretary'
-              ? const OfficialSubmissionScreen(kind: SubmissionKind.report)
-              : const PresidentReportsScreen();
-        },
-        AppRoutes.budget: (context) =>
-            const OfficialSubmissionScreen(kind: SubmissionKind.budget),
-        AppRoutes.moduleManagement: (context) => const ModuleManagementScreen(),
-        AppRoutes.consolidation: (context) => const ConsolidationScreen(),
-      },
+      ),
+      navigatorObservers: [_routeObserver],
       home: const SplashScreen(),
       debugShowCheckedModeBanner: false,
     );
+  }
+}
+
+final _routeObserver = _AppRouteObserver();
+
+class _AppRouteObserver extends NavigatorObserver {
+  String? currentRoute;
+
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    currentRoute = route.settings.name;
+    super.didPush(route, previousRoute);
+  }
+
+  @override
+  void didReplace({Route<dynamic>? newRoute, Route<dynamic>? oldRoute}) {
+    currentRoute = newRoute?.settings.name;
+    super.didReplace(newRoute: newRoute, oldRoute: oldRoute);
+  }
+
+  @override
+  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    currentRoute = previousRoute?.settings.name;
+    super.didPop(route, previousRoute);
+  }
+}
+
+class BackNavigationGuard extends StatefulWidget {
+  final Widget child;
+
+  const BackNavigationGuard({required this.child});
+
+  @override
+  State<BackNavigationGuard> createState() => _BackNavigationGuardState();
+}
+
+class _BackNavigationGuardState extends State<BackNavigationGuard> {
+  Timer? _exitTimer;
+  bool _canExit = false;
+
+  static const _homeRoutes = {
+    AppRoutes.presidentHome,
+    AppRoutes.chairmanHome,
+    AppRoutes.secretaryHome,
+  };
+
+  @override
+  void dispose() {
+    _exitTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<bool> _handleBack() async {
+    final route = _routeObserver.currentRoute;
+    final role = MobileApiService.currentUser?['role']?.toString();
+    final navigator = Navigator.of(context);
+    final homeRoute = switch (role) {
+      'sk_president' => AppRoutes.presidentHome,
+      'sk_chairman' => AppRoutes.chairmanHome,
+      'sk_secretary' => AppRoutes.secretaryHome,
+      _ => AppRoutes.login,
+    };
+
+    final isAuthenticated = _homeRoutes.contains(homeRoute);
+    final isInnerScreen =
+        isAuthenticated &&
+        (route == null || !_homeRoutes.contains(route)) &&
+        navigator.canPop();
+
+    if (isInnerScreen) {
+      if (mounted) {
+        navigator.pushNamedAndRemoveUntil(homeRoute, (route) => false);
+      }
+      return false;
+    }
+
+    // Allow unnamed authentication screens (for example OTP) to pop normally.
+    if (!isAuthenticated && navigator.canPop()) {
+      navigator.pop();
+      return false;
+    }
+
+    if (!_canExit) {
+      setState(() => _canExit = true);
+      _exitTimer?.cancel();
+      _exitTimer = Timer(const Duration(seconds: 2), () {
+        if (mounted) setState(() => _canExit = false);
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Press back again to exit.')),
+      );
+      return false;
+    }
+
+    await SystemNavigator.pop();
+    return false;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return WillPopScope(onWillPop: _handleBack, child: widget.child);
   }
 }
 
@@ -94,9 +209,25 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 
   Future<void> _navigateToLogin() async {
-    await Future.delayed(const Duration(seconds: 5));
+    await Future.delayed(const Duration(milliseconds: 800));
+    final restored = await MobileApiService.restoreSession();
     if (!mounted) return;
-    Navigator.pushReplacementNamed(context, AppRoutes.login);
+
+    if (restored) {
+      final role = MobileApiService.currentUser?['role']?.toString();
+      Navigator.pushReplacementNamed(context, _homeRouteForRole(role));
+    } else {
+      Navigator.pushReplacementNamed(context, AppRoutes.login);
+    }
+  }
+
+  String _homeRouteForRole(String? role) {
+    return switch (role) {
+      'sk_president' => AppRoutes.presidentHome,
+      'sk_chairman' => AppRoutes.chairmanHome,
+      'sk_secretary' => AppRoutes.secretaryHome,
+      _ => AppRoutes.login,
+    };
   }
 
   @override
@@ -119,7 +250,7 @@ class _SplashScreenState extends State<SplashScreen> {
             ),
             SizedBox(height: 80),
             Text(
-              'Empowering Youth Governance',
+              'Empowering SK Governance',
               style: TextStyle(
                 fontSize: 16,
                 color: AppColors.lightText,
@@ -145,7 +276,7 @@ class _SplashLogo extends StatelessWidget {
         color: AppColors.primaryRed,
         borderRadius: BorderRadius.circular(20),
       ),
-      child: const Icon(Icons.shield, size: 60, color: AppColors.white),
+      child: const AppLogo(width: 82, height: 82),
     );
   }
 }

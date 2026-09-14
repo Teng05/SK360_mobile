@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../routes.dart';
 import '../../services/mobile_api_service.dart';
@@ -14,6 +17,9 @@ class MobileDashboardScreen extends StatefulWidget {
 
 class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+  final ScrollController _scrollController = ScrollController();
+  Timer? _exitTimer;
+  bool _canExit = false;
   bool _isLoading = false;
   int _activeFeedTab = 0;
 
@@ -29,40 +35,70 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
   }
 
   @override
+  void dispose() {
+    _scrollController.dispose();
+    _exitTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<bool> _handleHomeBack() async {
+    if (_scrollController.hasClients && _scrollController.offset > 0) {
+      await _scrollController.animateTo(
+        0,
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeOut,
+      );
+      return false;
+    }
+
+    if (!_canExit) {
+      setState(() => _canExit = true);
+      _exitTimer?.cancel();
+      _exitTimer = Timer(const Duration(seconds: 2), () {
+        if (mounted) setState(() => _canExit = false);
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Press back again to exit.')),
+      );
+      return false;
+    }
+
+    await SystemNavigator.pop();
+    return false;
+  }
+
+  @override
   Widget build(BuildContext context) {
     final barangay = _user['barangay_name']?.toString() ?? 'Barangay';
     final posts = _rows('wall_posts');
     final meetings = _rows('meetings');
-    final isYouth = _user['role']?.toString() == 'youth';
-
-    return Scaffold(
-      key: _scaffoldKey,
-      drawer: isYouth ? null : const PresidentSideDrawer(),
-      backgroundColor: AppColors.lightGrayBg,
-      appBar: PreferredSize(
+    return WillPopScope(
+      onWillPop: _handleHomeBack,
+      child: Scaffold(
+        key: _scaffoldKey,
+        drawer: const PresidentSideDrawer(),
+        backgroundColor: AppColors.lightGrayBg,
+        appBar: PreferredSize(
         preferredSize: const Size.fromHeight(86),
         child: SafeArea(
           bottom: false,
           child: PresidentHeader(
-            leading: isYouth
-                ? PresidentHeaderLeading.none
-                : PresidentHeaderLeading.menu,
-            onLeadingTap: isYouth
-                ? null
-                : () => _scaffoldKey.currentState?.openDrawer(),
+            leading: PresidentHeaderLeading.menu,
+            onLeadingTap: () => _scaffoldKey.currentState?.openDrawer(),
             title: 'SK 360',
             subtitle: barangay,
           ),
         ),
-      ),
-      bottomNavigationBar: PresidentBottomNavBar(
-        activeItem: PresidentNavItem.home,
-        onItemSelected: _handleNavSelection,
-      ),
-      body: SafeArea(
-        child: RefreshIndicator(
-          onRefresh: _refresh,
-          child: ListView(
+        ),
+        bottomNavigationBar: PresidentBottomNavBar(
+          activeItem: PresidentNavItem.home,
+          onItemSelected: _handleNavSelection,
+        ),
+        body: SafeArea(
+          child: RefreshIndicator(
+            onRefresh: _refresh,
+            child: ListView(
+              controller: _scrollController,
             padding: const EdgeInsets.only(bottom: 18),
             children: [
               if (_isLoading) const LinearProgressIndicator(minHeight: 3),
@@ -92,11 +128,10 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
                   ],
                 ),
               ),
-              if (!isYouth)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                  child: _UpcomingMeetingsCard(meetings: meetings),
-                ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                child: _UpcomingMeetingsCard(meetings: meetings),
+              ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
                 child: _QuickActions(onOpen: _openRoute),
@@ -117,6 +152,7 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
                 onLike: _toggleWallLike,
               ),
             ],
+            ),
           ),
         ),
       ),
@@ -125,7 +161,26 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
 
   List<Map<String, dynamic>> _rows(String key) {
     final rows = _data[key] as List<dynamic>? ?? [];
-    return rows.map((row) => Map<String, dynamic>.from(row as Map)).toList();
+    final result = rows.map((row) => Map<String, dynamic>.from(row as Map)).toList();
+
+    if (key == 'wall_posts') {
+      result.sort(_compareNewestPosts);
+    }
+
+    return result;
+  }
+
+  int _compareNewestPosts(Map<String, dynamic> a, Map<String, dynamic> b) {
+    final bDate = DateTime.tryParse(b['created_at']?.toString() ?? '');
+    final aDate = DateTime.tryParse(a['created_at']?.toString() ?? '');
+    final dateOrder = (bDate ?? DateTime.fromMillisecondsSinceEpoch(0))
+        .compareTo(aDate ?? DateTime.fromMillisecondsSinceEpoch(0));
+
+    if (dateOrder != 0) return dateOrder;
+
+    final bId = int.tryParse(b['announcement_id']?.toString() ?? '') ?? 0;
+    final aId = int.tryParse(a['announcement_id']?.toString() ?? '') ?? 0;
+    return bId.compareTo(aId);
   }
 
   List<Map<String, dynamic>> _filteredPosts(List<Map<String, dynamic>> posts) {
@@ -464,22 +519,19 @@ class _QuickActions extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final role = MobileApiService.currentUser?['role']?.toString() ?? '';
     final actions = [
-      if (role != 'youth')
-        (
-          AppRoutes.reports,
-          'Create Submission',
-          Icons.check_circle_outline,
-          const Color(0xFFFFE8EA),
-        ),
-      if (role != 'youth')
-        (
-          AppRoutes.videoMeetings,
-          'Join Meeting',
-          Icons.video_call,
-          const Color(0xFFEAF2FF),
-        ),
+      (
+        AppRoutes.moduleManagement,
+        'Create Submission',
+        Icons.check_circle_outline,
+        const Color(0xFFFFE8EA),
+      ),
+      (
+        AppRoutes.videoMeetings,
+        'Join Meeting',
+        Icons.video_call,
+        const Color(0xFFEAF2FF),
+      ),
       (
         AppRoutes.rankings,
         'View Rankings',

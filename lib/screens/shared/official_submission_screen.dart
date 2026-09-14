@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../../routes.dart';
 import '../../services/mobile_api_service.dart';
 import '../../ui/app_ui.dart';
 import '../../widgets/president_components.dart';
@@ -66,12 +65,6 @@ class _OfficialSubmissionScreenState extends State<OfficialSubmissionScreen> {
                 onLeadingTap: () => _scaffoldKey.currentState?.openDrawer(),
                 title: _title,
                 subtitle: _subtitle,
-                trailing: [
-                  IconButton(
-                    onPressed: _isLoading ? null : _refresh,
-                    icon: const Icon(Icons.refresh, color: Colors.white),
-                  ),
-                ],
               ),
               if (_isLoading) const LinearProgressIndicator(minHeight: 3),
               Padding(

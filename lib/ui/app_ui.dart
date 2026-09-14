@@ -11,6 +11,29 @@ class AppColors {
   static const Color buttonGray = Color(0xFF95A5A6);
 }
 
+class AppLogo extends StatelessWidget {
+  final double width;
+  final double height;
+  final BoxFit fit;
+
+  const AppLogo({
+    super.key,
+    this.width = 40,
+    this.height = 40,
+    this.fit = BoxFit.contain,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Image.asset(
+      'assets/images/sk logo.png',
+      width: width,
+      height: height,
+      fit: fit,
+    );
+  }
+}
+
 class AppHeader extends StatelessWidget {
   final String appName;
   final String subtitle;
@@ -18,7 +41,7 @@ class AppHeader extends StatelessWidget {
   const AppHeader({
     super.key,
     this.appName = 'SK 360°',
-    this.subtitle = 'Youth Governance Platform',
+    this.subtitle = 'SK Governance Platform',
   });
 
   @override
@@ -28,19 +51,7 @@ class AppHeader extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
       child: Row(
         children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: AppColors.white,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: const Icon(
-              Icons.shield_outlined,
-              color: AppColors.primaryRed,
-              size: 24,
-            ),
-          ),
+          const AppLogo(width: 48, height: 48),
           const SizedBox(width: 16),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,

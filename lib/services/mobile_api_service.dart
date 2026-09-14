@@ -6,7 +6,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class MobileApiService {
   static const String _rememberedEmailKey = 'remembered_email';
-  static const String baseUrl = 'http://192.168.68.117:8000/api/mobile';
+  static const String _accessTokenKey = 'access_token';
+  static const String _userKey = 'current_user';
+  static const String baseUrl = 'http://192.168.68.108:8000/api/mobile';
   static String webUrl(String path) {
     final root = baseUrl.replaceFirst(RegExp(r'/api/mobile$'), '');
     final normalizedPath = path.startsWith('/') ? path : '/$path';
@@ -52,9 +54,38 @@ class MobileApiService {
     _accessToken = response['access_token'] as String?;
     currentUser = response['user'] as Map<String, dynamic>?;
 
+    await _saveSession();
+
     syncedData = await sync();
 
     return response;
+  }
+
+  /// Restores the last authenticated session when the app starts.
+  static Future<bool> restoreSession() async {
+    final preferences = await SharedPreferences.getInstance();
+    final token = preferences.getString(_accessTokenKey);
+    final savedUser = preferences.getString(_userKey);
+
+    if (token == null || token.isEmpty || savedUser == null) {
+      return false;
+    }
+
+    try {
+      final decodedUser = jsonDecode(savedUser);
+      if (decodedUser is! Map) {
+        await _clearSession();
+        return false;
+      }
+
+      _accessToken = token;
+      currentUser = Map<String, dynamic>.from(decodedUser);
+      await sync();
+      return true;
+    } catch (_) {
+      await _clearSession();
+      return false;
+    }
   }
 
   static Future<List<Map<String, dynamic>>> barangays() async {
@@ -183,6 +214,7 @@ class MobileApiService {
     );
 
     currentUser = response['user'] as Map<String, dynamic>? ?? currentUser;
+    await _saveSession();
     await sync();
 
     return response;
@@ -223,11 +255,7 @@ class MobileApiService {
   static Future<Map<String, dynamic>> verifyPasswordChange({
     required String code,
   }) {
-    return _request(
-      'POST',
-      '/profile/password/verify',
-      body: {'code': code},
-    );
+    return _request('POST', '/profile/password/verify', body: {'code': code});
   }
 
   static Future<Map<String, dynamic>> createEvent({
@@ -282,6 +310,11 @@ class MobileApiService {
   static Future<String> meetingJoinUrl(int meetingId) async {
     final response = await _request('GET', '/meetings/$meetingId/join-url');
     return response['join_url']?.toString() ?? '';
+  }
+
+  static Future<void> endMeeting(int meetingId) async {
+    await _request('PATCH', '/meetings/$meetingId/end');
+    await sync();
   }
 
   static Future<Map<String, dynamic>> meetingAgoraToken(int meetingId) {
@@ -424,6 +457,14 @@ class MobileApiService {
     return _request('GET', '/submission-slots');
   }
 
+  static Future<Map<String, dynamic>> toggleSubmissionSlot(int slotId) {
+    return _request('PATCH', '/submission-slots/$slotId/toggle');
+  }
+
+  static Future<Map<String, dynamic>> submissionSlotSubmissions(int slotId) {
+    return _request('GET', '/submission-slots/$slotId/submissions');
+  }
+
   static Future<Map<String, dynamic>> createSubmissionSlot({
     required String submissionType,
     required String title,
@@ -493,10 +534,27 @@ class MobileApiService {
   }
 
   static Future<void> logout() async {
-    if (_accessToken != null) {
-      await _request('POST', '/logout');
+    try {
+      if (_accessToken != null) {
+        await _request('POST', '/logout');
+      }
+    } finally {
+      await _clearSession();
     }
+  }
 
+  static Future<void> _saveSession() async {
+    final preferences = await SharedPreferences.getInstance();
+    if (_accessToken == null || currentUser == null) return;
+
+    await preferences.setString(_accessTokenKey, _accessToken!);
+    await preferences.setString(_userKey, jsonEncode(currentUser));
+  }
+
+  static Future<void> _clearSession() async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.remove(_accessTokenKey);
+    await preferences.remove(_userKey);
     _accessToken = null;
     currentUser = null;
     syncedData = null;

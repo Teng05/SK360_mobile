@@ -56,12 +56,6 @@ class _MeetingWebViewScreenState extends State<MeetingWebViewScreen> {
         backgroundColor: AppColors.primaryRed,
         foregroundColor: Colors.white,
         title: Text(widget.title),
-        actions: [
-          IconButton(
-            onPressed: () => _controller.reload(),
-            icon: const Icon(Icons.refresh),
-          ),
-        ],
       ),
       body: Column(
         children: [

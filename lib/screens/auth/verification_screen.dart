@@ -50,7 +50,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
         child: SafeArea(
           child: AppHeader(
             appName: 'SK 360°',
-            subtitle: 'Youth Governance Platform',
+            subtitle: 'SK Governance Platform',
           ),
         ),
       ),
@@ -126,7 +126,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
                 const SizedBox(height: 80),
                 const Center(
                   child: Text(
-                    'Empowering Youth Governance',
+                    'Empowering SK Governance',
                     style: TextStyle(
                       fontSize: 12,
                       color: AppColors.lightText,

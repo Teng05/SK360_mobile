@@ -45,7 +45,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
         child: const SafeArea(
           child: AppHeader(
             appName: 'SK 360°',
-            subtitle: 'Youth Governance Platform',
+            subtitle: 'SK Governance Platform',
           ),
         ),
       ),
@@ -65,7 +65,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
               ),
               const SizedBox(height: 8),
               const Text(
-                'Join the SK 360° platform for transparent youth governance',
+                'Join the SK 360° platform for transparent SK governance',
                 style: TextStyle(
                   fontSize: 14,
                   color: AppColors.lightText,

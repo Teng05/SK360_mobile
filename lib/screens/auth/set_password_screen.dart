@@ -46,7 +46,7 @@ class _SetPasswordScreenState extends State<SetPasswordScreen> {
         child: SafeArea(
           child: AppHeader(
             appName: 'SK 360°',
-            subtitle: 'Youth Governance Platform',
+            subtitle: 'SK Governance Platform',
           ),
         ),
       ),

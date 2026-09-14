@@ -47,7 +47,7 @@ class _LoginScreenState extends State<LoginScreen> {
         child: SafeArea(
           child: AppHeader(
             appName: 'SK 360°',
-            subtitle: 'Youth Governance Platform',
+            subtitle: 'SK Governance Platform',
           ),
         ),
       ),
@@ -182,8 +182,7 @@ class _LoginScreenState extends State<LoginScreen> {
       'sk_president' => AppRoutes.presidentHome,
       'sk_chairman' => AppRoutes.chairmanHome,
       'sk_secretary' => AppRoutes.secretaryHome,
-      'youth' => AppRoutes.youthHome,
-      _ => AppRoutes.youthHome,
+      _ => AppRoutes.login,
     };
   }
 }

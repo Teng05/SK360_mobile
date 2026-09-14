@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../routes.dart';
 import '../../services/mobile_api_service.dart';
 import '../shared/native_agora_meeting_screen.dart';
 import '../../ui/app_ui.dart';
@@ -10,7 +9,8 @@ class PresidentMeetingsScreen extends StatefulWidget {
   const PresidentMeetingsScreen({super.key});
 
   @override
-  State<PresidentMeetingsScreen> createState() => _PresidentMeetingsScreenState();
+  State<PresidentMeetingsScreen> createState() =>
+      _PresidentMeetingsScreenState();
 }
 
 class _PresidentMeetingsScreenState extends State<PresidentMeetingsScreen> {
@@ -32,8 +32,7 @@ class _PresidentMeetingsScreenState extends State<PresidentMeetingsScreen> {
   @override
   Widget build(BuildContext context) {
     final meetings = _meetings();
-    final active = meetings.where((m) => m.isActive).toList();
-    final scheduled = meetings.where((m) => m.isScheduled).toList();
+    final upcoming = meetings.where((m) => m.isUpcoming).toList();
     final past = meetings.where((m) => m.isPast).toList();
 
     return Scaffold(
@@ -64,33 +63,33 @@ class _PresidentMeetingsScreenState extends State<PresidentMeetingsScreen> {
                 onLeadingTap: () => _scaffoldKey.currentState?.openDrawer(),
                 title: 'Video Meetings',
                 subtitle: 'Create and join web meetings',
-                trailing: [
-                  IconButton(
-                    onPressed: _isLoading ? null : _refresh,
-                    icon: const Icon(Icons.refresh, color: Colors.white),
-                  ),
-                ],
               ),
               if (_isLoading) const LinearProgressIndicator(minHeight: 3),
               Padding(
                 padding: const EdgeInsets.all(16),
                 child: Row(
                   children: [
-                    Expanded(child: _StatCard(label: 'Active', value: '${active.length}')),
+                    Expanded(
+                      child: _StatCard(
+                        label: 'Upcoming',
+                        value: '${upcoming.length}',
+                      ),
+                    ),
                     const SizedBox(width: 10),
-                    Expanded(child: _StatCard(label: 'Scheduled', value: '${scheduled.length}')),
-                    const SizedBox(width: 10),
-                    Expanded(child: _StatCard(label: 'Past', value: '${past.length}')),
+                    Expanded(
+                      child: _StatCard(label: 'Past', value: '${past.length}'),
+                    ),
                   ],
                 ),
               ),
               _MeetingSection(
-                title: 'Scheduled Meetings',
-                meetings: scheduled,
+                title: 'Upcoming Meetings',
+                meetings: upcoming,
                 emptyText: _canCreate
-                    ? 'No scheduled meetings yet. Create one using the button below.'
-                    : 'No scheduled meetings yet.',
+                    ? 'No upcoming meetings yet. Create one using the button below.'
+                    : 'No upcoming meetings yet.',
                 onJoin: _joinMeeting,
+                onEnd: _canCreate ? _endMeeting : null,
               ),
               _MeetingSection(
                 title: 'Past Meetings',
@@ -166,7 +165,9 @@ class _PresidentMeetingsScreenState extends State<PresidentMeetingsScreen> {
                       final picked = await showDatePicker(
                         context: context,
                         initialDate: date,
-                        firstDate: DateTime.now().subtract(const Duration(days: 1)),
+                        firstDate: DateTime.now().subtract(
+                          const Duration(days: 1),
+                        ),
                         lastDate: DateTime.now().add(const Duration(days: 365)),
                       );
                       if (picked != null) {
@@ -197,7 +198,9 @@ class _PresidentMeetingsScreenState extends State<PresidentMeetingsScreen> {
                 child: const Text('Cancel'),
               ),
               FilledButton(
-                style: FilledButton.styleFrom(backgroundColor: AppColors.primaryRed),
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.primaryRed,
+                ),
                 onPressed: () async {
                   final title = titleController.text.trim();
                   if (title.isEmpty) return;
@@ -261,6 +264,40 @@ class _PresidentMeetingsScreenState extends State<PresidentMeetingsScreen> {
     }
   }
 
+  Future<void> _endMeeting(_MeetingItem meeting) async {
+    final shouldEnd = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('End meeting?'),
+        content: Text('End "${meeting.title}" and move it to Past Meetings?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.primaryRed,
+            ),
+            child: const Text('End Meeting'),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldEnd != true || !mounted) return;
+
+    setState(() => _isLoading = true);
+    try {
+      await MobileApiService.endMeeting(meeting.id);
+    } on MobileApiException catch (exception) {
+      if (mounted) _showMessage(exception.message);
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
   void _handleNavSelection(PresidentNavItem item) {
     handleRoleNavSelection(context, item);
   }
@@ -277,11 +314,13 @@ class _MeetingSection extends StatelessWidget {
   final List<_MeetingItem> meetings;
   final String emptyText;
   final ValueChanged<_MeetingItem> onJoin;
+  final ValueChanged<_MeetingItem>? onEnd;
 
   const _MeetingSection({
     required this.title,
     required this.meetings,
     required this.onJoin,
+    this.onEnd,
     this.emptyText = 'No meetings yet.',
   });
 
@@ -318,7 +357,11 @@ class _MeetingSection extends StatelessWidget {
               ...meetings.map(
                 (meeting) => Padding(
                   padding: const EdgeInsets.only(bottom: 10),
-                  child: _MeetingCard(meeting: meeting, onJoin: () => onJoin(meeting)),
+                  child: _MeetingCard(
+                    meeting: meeting,
+                    onJoin: () => onJoin(meeting),
+                    onEnd: onEnd == null ? null : () => onEnd!(meeting),
+                  ),
                 ),
               ),
           ],
@@ -331,8 +374,9 @@ class _MeetingSection extends StatelessWidget {
 class _MeetingCard extends StatelessWidget {
   final _MeetingItem meeting;
   final VoidCallback onJoin;
+  final VoidCallback? onEnd;
 
-  const _MeetingCard({required this.meeting, required this.onJoin});
+  const _MeetingCard({required this.meeting, required this.onJoin, this.onEnd});
 
   @override
   Widget build(BuildContext context) {
@@ -352,7 +396,10 @@ class _MeetingCard extends StatelessWidget {
                 backgroundColor: AppColors.primaryRed,
                 child: Text(
                   meeting.initials,
-                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
               const SizedBox(width: 12),
@@ -369,7 +416,10 @@ class _MeetingCard extends StatelessWidget {
                     const SizedBox(height: 3),
                     Text(
                       meeting.displayDateTime,
-                      style: const TextStyle(color: AppColors.lightText, fontSize: 12),
+                      style: const TextStyle(
+                        color: AppColors.lightText,
+                        fontSize: 12,
+                      ),
                     ),
                   ],
                 ),
@@ -387,20 +437,39 @@ class _MeetingCard extends StatelessWidget {
             ),
           ],
           const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: meeting.canJoin ? onJoin : null,
-              icon: const Icon(Icons.video_call_outlined),
-              label: const Text('Join Meeting'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primaryRed,
-                foregroundColor: Colors.white,
-                disabledBackgroundColor: const Color(0xFFE5E7EB),
-                disabledForegroundColor: const Color(0xFF94A3B8),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          Row(
+            children: [
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: meeting.canJoin ? onJoin : null,
+                  icon: const Icon(Icons.video_call_outlined),
+                  label: const Text('Join Meeting'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primaryRed,
+                    foregroundColor: Colors.white,
+                    disabledBackgroundColor: const Color(0xFFE5E7EB),
+                    disabledForegroundColor: const Color(0xFF94A3B8),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
               ),
-            ),
+              if (onEnd != null) ...[
+                const SizedBox(width: 8),
+                OutlinedButton(
+                  onPressed: onEnd,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.primaryRed,
+                    side: const BorderSide(color: AppColors.primaryRed),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: const Text('End'),
+                ),
+              ],
+            ],
           ),
         ],
       ),
@@ -439,7 +508,11 @@ class _PickerTile extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
 
-  const _PickerTile({required this.icon, required this.label, required this.onTap});
+  const _PickerTile({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -476,9 +549,15 @@ class _StatCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: const TextStyle(color: AppColors.lightText, fontSize: 12)),
+          Text(
+            label,
+            style: const TextStyle(color: AppColors.lightText, fontSize: 12),
+          ),
           const SizedBox(height: 8),
-          Text(value, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900)),
+          Text(
+            value,
+            style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900),
+          ),
         ],
       ),
     );
@@ -531,11 +610,15 @@ class _MeetingItem {
   factory _MeetingItem.fromRow(Map<String, dynamic> row) {
     final date = _text(row['meeting_date']);
     final time = _text(row['meeting_time']);
-    final parsed = DateTime.tryParse('$date ${time.isEmpty ? '00:00:00' : time}');
+    final parsed = DateTime.tryParse(
+      '$date ${time.isEmpty ? '00:00:00' : time}',
+    );
 
     return _MeetingItem(
       id: _int(row['meeting_id']),
-      title: _text(row['title']).isEmpty ? 'Untitled Meeting' : _text(row['title']),
+      title: _text(row['title']).isEmpty
+          ? 'Untitled Meeting'
+          : _text(row['title']),
       agenda: _text(row['agenda']),
       status: _text(row['status']).isEmpty
           ? 'scheduled'
@@ -552,24 +635,36 @@ class _MeetingItem {
         scheduledAt.add(const Duration(hours: 1)).isAfter(now);
   }
 
-  bool get isScheduled =>
-      status == 'scheduled' && scheduledAt.isAfter(DateTime.now());
-  bool get isPast =>
-      status != 'scheduled' ||
-      (!isActive && !scheduledAt.isAfter(DateTime.now()));
-  bool get canJoin => status == 'scheduled' && !isPast;
+  bool get isUpcoming =>
+      !isPast && status != 'cancelled' && status != 'canceled';
+  bool get isPast {
+    final now = DateTime.now();
+    final cancelled = status == 'cancelled' || status == 'canceled';
+    final completed = status == 'completed' && !scheduledAt.isAfter(now);
+    return cancelled ||
+        completed ||
+        scheduledAt.add(const Duration(hours: 1)).isBefore(now);
+  }
+
+  bool get canJoin => isUpcoming;
 
   String get statusLabel {
-    if (status == 'completed') return 'Completed';
-    if (status == 'cancelled') return 'Cancelled';
+    if (status == 'cancelled' || status == 'canceled') {
+      return 'Cancelled';
+    }
+    if (isPast) return 'Completed';
     if (isActive) return 'Ready';
     return 'Upcoming';
   }
 
-  String get displayDateTime => '${_dateLabel(scheduledAt)} ${_timeLabel(scheduledAt)}';
+  String get displayDateTime =>
+      '${_dateLabel(scheduledAt)} ${_timeLabel(scheduledAt)}';
 
   String get initials {
-    final words = title.split(RegExp(r'\s+')).where((word) => word.isNotEmpty).toList();
+    final words = title
+        .split(RegExp(r'\s+'))
+        .where((word) => word.isNotEmpty)
+        .toList();
     if (words.isEmpty) return 'MT';
     return words.take(2).map((word) => word[0].toUpperCase()).join();
   }
@@ -583,7 +678,20 @@ int _int(Object? value) {
 }
 
 String _dateLabel(DateTime date) {
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const months = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
   return '${months[date.month - 1]} ${date.day}, ${date.year}';
 }
 

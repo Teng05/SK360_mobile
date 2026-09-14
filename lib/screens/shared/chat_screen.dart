@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import '../../routes.dart';
 import '../../services/firebase_chat_service.dart';
 import '../../services/mobile_api_service.dart';
 import '../../ui/app_ui.dart';
@@ -22,6 +21,7 @@ class _ChatScreenState extends State<ChatScreen> {
   Timer? _pollTimer;
   bool _isLoading = false;
   bool _isSending = false;
+  bool _showEmojiPicker = false;
   List<ChatRoom> _rooms = [];
   List<Map<String, dynamic>> _users = [];
   List<ChatMessage> _messages = [];
@@ -56,6 +56,7 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   Widget build(BuildContext context) {
     final activeName = _activeRoom?.displayNameFor(_userName) ?? 'No conversation';
+    final isThreadOpen = _activeRoom != null;
 
     return Scaffold(
       key: _scaffoldKey,
@@ -69,43 +70,25 @@ class _ChatScreenState extends State<ChatScreen> {
         child: Column(
           children: [
             PresidentHeader(
-              leading: PresidentHeaderLeading.menu,
-              onLeadingTap: () => _scaffoldKey.currentState?.openDrawer(),
-              title: 'Chat',
-              subtitle: 'Synced with web chat',
-              trailing: [
-                IconButton(
-                  onPressed: _isLoading ? null : _refresh,
-                  icon: const Icon(Icons.refresh, color: Colors.white),
-                ),
-              ],
+              leading: isThreadOpen
+                  ? PresidentHeaderLeading.back
+                  : PresidentHeaderLeading.menu,
+              onLeadingTap: isThreadOpen
+                  ? _closeRoom
+                  : () => _scaffoldKey.currentState?.openDrawer(),
+              title: isThreadOpen ? activeName : 'Chat',
+              subtitle: isThreadOpen ? 'Conversation' : 'Messages',
             ),
             if (_isLoading) const LinearProgressIndicator(minHeight: 3),
             Expanded(
-              child: Row(
-                children: [
-                  SizedBox(
-                    width: 132,
-                    child: _RoomRail(
-                      rooms: _rooms,
-                      users: _users,
-                      activeRoom: _activeRoom,
-                      currentUserName: _userName,
-                      searchController: _searchController,
-                      onSearch: _loadUsers,
-                      onRoomTap: _openRoom,
-                      onUserTap: _openUser,
-                    ),
-                  ),
-                  Expanded(
-                    child: Column(
+              child: isThreadOpen
+                  ? Column(
                       children: [
-                        _ChatTitle(name: activeName),
                         Expanded(
                           child: _messages.isEmpty
                               ? const Center(
                                   child: Text(
-                                    'Select a user to start chatting.',
+                                    'No messages yet. Send a message to start chatting.',
                                     textAlign: TextAlign.center,
                                     style: TextStyle(color: AppColors.lightText),
                                   ),
@@ -121,24 +104,31 @@ class _ChatScreenState extends State<ChatScreen> {
                         ),
                         _Composer(
                           controller: _messageController,
-                          enabled: _activeRoom != null && !_isSending,
+                          enabled: !_isSending,
                           onSend: _sendMessage,
+                          showEmojiPicker: _showEmojiPicker,
+                          onToggleEmojiPicker: () => setState(
+                            () => _showEmojiPicker = !_showEmojiPicker,
+                          ),
+                          onEmojiSelected: _insertEmoji,
                         ),
                       ],
+                    )
+                  : _RoomRail(
+                      rooms: _rooms,
+                      users: _users,
+                      activeRoom: _activeRoom,
+                      currentUserName: _userName,
+                      searchController: _searchController,
+                      onSearch: _loadUsers,
+                      onRoomTap: _openRoom,
+                      onUserTap: _openUser,
                     ),
-                  ),
-                ],
-              ),
             ),
           ],
         ),
       ),
     );
-  }
-
-  Future<void> _refresh() async {
-    await _loadRooms();
-    if (_activeRoom != null) await _loadMessages(_activeRoom!);
   }
 
   Future<void> _loadRooms() async {
@@ -148,9 +138,6 @@ class _ChatScreenState extends State<ChatScreen> {
       final rooms = await FirebaseChatService.roomsForUser(_userId);
       if (!mounted) return;
       setState(() => _rooms = rooms);
-      if (_activeRoom == null && rooms.isNotEmpty) {
-        await _openRoom(rooms.first);
-      }
     } on ChatException catch (exception) {
       if (mounted) _showMessage(exception.message);
     } finally {
@@ -198,6 +185,16 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  void _closeRoom() {
+    _pollTimer?.cancel();
+    setState(() {
+      _activeRoom = null;
+      _messages = [];
+      _showEmojiPicker = false;
+      _messageController.clear();
+    });
+  }
+
   Future<void> _loadMessages(ChatRoom room, {bool quiet = false}) async {
     try {
       final messages = await FirebaseChatService.messages(room.id);
@@ -222,12 +219,28 @@ class _ChatScreenState extends State<ChatScreen> {
         senderRole: _userRole,
       );
       _messageController.clear();
+      setState(() => _showEmojiPicker = false);
       await _loadMessages(room);
     } on ChatException catch (exception) {
       if (mounted) _showMessage(exception.message);
     } finally {
       if (mounted) setState(() => _isSending = false);
     }
+  }
+
+  void _insertEmoji(String emoji) {
+    final value = _messageController.value;
+    final start = value.selection.start < 0
+        ? value.text.length
+        : value.selection.start;
+    final end = value.selection.end < 0 ? start : value.selection.end;
+    final text = value.text.replaceRange(start, end, emoji);
+    final cursor = start + emoji.length;
+    _messageController.value = value.copyWith(
+      text: text,
+      selection: TextSelection.collapsed(offset: cursor),
+      composing: TextRange.empty,
+    );
   }
 
   void _handleNavSelection(PresidentNavItem item) {
@@ -345,25 +358,6 @@ class _UserTile extends StatelessWidget {
   }
 }
 
-class _ChatTitle extends StatelessWidget {
-  final String name;
-
-  const _ChatTitle({required this.name});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(14),
-      color: Colors.white,
-      child: Text(
-        name,
-        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
-      ),
-    );
-  }
-}
-
 class _MessageBubble extends StatelessWidget {
   final ChatMessage message;
   final bool own;
@@ -410,11 +404,17 @@ class _Composer extends StatelessWidget {
   final TextEditingController controller;
   final bool enabled;
   final VoidCallback onSend;
+  final bool showEmojiPicker;
+  final VoidCallback onToggleEmojiPicker;
+  final ValueChanged<String> onEmojiSelected;
 
   const _Composer({
     required this.controller,
     required this.enabled,
     required this.onSend,
+    required this.showEmojiPicker,
+    required this.onToggleEmojiPicker,
+    required this.onEmojiSelected,
   });
 
   @override
@@ -422,24 +422,75 @@ class _Composer extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(12),
       color: Colors.white,
-      child: Row(
+      child: Column(
         children: [
-          Expanded(
-            child: TextField(
-              controller: controller,
-              enabled: enabled,
-              decoration: const InputDecoration(
-                hintText: 'Type your message...',
-                border: OutlineInputBorder(),
+          if (showEmojiPicker)
+            Container(
+              width: double.infinity,
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppColors.lightGrayBg,
+                borderRadius: BorderRadius.circular(12),
               ),
-              onSubmitted: (_) => onSend(),
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final emoji in const [
+                    '\u{1F600}',
+                    '\u{1F602}',
+                    '\u{1F60D}',
+                    '\u{1F64F}',
+                    '\u{1F44D}',
+                    '\u{1F389}',
+                    '\u{2764}\u{FE0F}',
+                    '\u{1F525}',
+                    '\u{1F622}',
+                    '\u{1F621}',
+                    '\u{1F914}',
+                    '\u{1F44F}',
+                  ])
+                    InkWell(
+                      onTap: enabled ? () => onEmojiSelected(emoji) : null,
+                      borderRadius: BorderRadius.circular(8),
+                      child: Padding(
+                        padding: const EdgeInsets.all(4),
+                        child: Text(emoji, style: const TextStyle(fontSize: 24)),
+                      ),
+                    ),
+                ],
+              ),
             ),
-          ),
-          const SizedBox(width: 8),
-          IconButton.filled(
-            style: IconButton.styleFrom(backgroundColor: AppColors.primaryRed),
-            onPressed: enabled ? onSend : null,
-            icon: const Icon(Icons.send),
+          Row(
+            children: [
+              IconButton(
+                onPressed: enabled ? onToggleEmojiPicker : null,
+                color: AppColors.primaryRed,
+                icon: Icon(
+                  showEmojiPicker
+                      ? Icons.close_rounded
+                      : Icons.emoji_emotions_outlined,
+                ),
+              ),
+              Expanded(
+                child: TextField(
+                  controller: controller,
+                  enabled: enabled,
+                  decoration: const InputDecoration(
+                    hintText: 'Type your message...',
+                    border: OutlineInputBorder(),
+                  ),
+                  onSubmitted: (_) => onSend(),
+                ),
+              ),
+              const SizedBox(width: 8),
+              IconButton.filled(
+                style: IconButton.styleFrom(backgroundColor: AppColors.primaryRed),
+                onPressed: enabled ? onSend : null,
+                icon: const Icon(Icons.send),
+              ),
+            ],
           ),
         ],
       ),

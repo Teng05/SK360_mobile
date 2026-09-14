@@ -4,7 +4,6 @@ class AppRoutes {
   static const String presidentHome = '/president-home';
   static const String chairmanHome = '/chairman-home';
   static const String secretaryHome = '/secretary-home';
-  static const String youthHome = '/youth-home';
   static const String presidentMessages = '/president-messages';
   static const String presidentCalendar = '/president-calendar';
   static const String chatConversation = '/chat-conversation';

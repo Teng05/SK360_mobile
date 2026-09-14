@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../routes.dart';
 import '../../services/mobile_api_service.dart';
 import '../../ui/app_ui.dart';
 import '../../widgets/president_components.dart';
@@ -43,7 +42,7 @@ class _SyncedDataScreenState extends State<SyncedDataScreen> {
 
     return Scaffold(
       key: _scaffoldKey,
-      drawer: _isYouth ? null : const PresidentSideDrawer(),
+      drawer: const PresidentSideDrawer(),
       backgroundColor: AppColors.lightGrayBg,
       bottomNavigationBar: PresidentBottomNavBar(
         activeItem: _activeNav,
@@ -64,20 +63,10 @@ class _SyncedDataScreenState extends State<SyncedDataScreen> {
             padding: const EdgeInsets.only(bottom: 24),
             children: [
               PresidentHeader(
-                leading: _isYouth
-                    ? PresidentHeaderLeading.none
-                    : PresidentHeaderLeading.menu,
-                onLeadingTap: _isYouth
-                    ? null
-                    : () => _scaffoldKey.currentState?.openDrawer(),
+                leading: PresidentHeaderLeading.menu,
+                onLeadingTap: () => _scaffoldKey.currentState?.openDrawer(),
                 title: widget.title,
                 subtitle: widget.subtitle,
-                trailing: [
-                  IconButton(
-                    onPressed: _isLoading ? null : _refresh,
-                    icon: const Icon(Icons.refresh, color: Colors.white),
-                  ),
-                ],
               ),
               if (_isLoading) const LinearProgressIndicator(minHeight: 3),
               const SizedBox(height: 20),
@@ -128,14 +117,11 @@ class _SyncedDataScreenState extends State<SyncedDataScreen> {
     }
 
     if (widget.dataKey == 'wall_posts') {
-      return _isYouth ? PresidentNavItem.announcements : null;
+      return null;
     }
 
     return null;
   }
-
-  bool get _isYouth =>
-      MobileApiService.currentUser?['role']?.toString() == 'youth';
 
   bool get _canCreatePost =>
       MobileApiService.currentUser?['role']?.toString() == 'sk_president';
@@ -148,7 +134,29 @@ class _SyncedDataScreenState extends State<SyncedDataScreen> {
     final source =
         MobileApiService.syncedData?[widget.dataKey] as List<dynamic>? ?? [];
 
-    return source.map((row) => Map<String, dynamic>.from(row as Map)).toList();
+    final rows = source.map((row) => Map<String, dynamic>.from(row as Map)).toList();
+
+    if (widget.dataKey == 'wall_posts' || widget.dataKey == 'announcements') {
+      rows.sort((a, b) {
+        final bDate = DateTime.tryParse(b['created_at']?.toString() ?? '');
+        final aDate = DateTime.tryParse(a['created_at']?.toString() ?? '');
+        final dateOrder = (bDate ?? DateTime.fromMillisecondsSinceEpoch(0))
+            .compareTo(aDate ?? DateTime.fromMillisecondsSinceEpoch(0));
+        if (dateOrder != 0) return dateOrder;
+
+        final bId = int.tryParse(
+              b['announcement_id']?.toString() ?? '',
+            ) ??
+            0;
+        final aId = int.tryParse(
+              a['announcement_id']?.toString() ?? '',
+            ) ??
+            0;
+        return bId.compareTo(aId);
+      });
+    }
+
+    return rows;
   }
 
   Future<void> _refresh() async {
@@ -168,85 +176,142 @@ class _SyncedDataScreenState extends State<SyncedDataScreen> {
   }
 
   Future<void> _showCreatePostDialog() async {
-    final controller = TextEditingController();
-    String category = 'announcement';
-
-    await showDialog<void>(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text('Create Post'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              DropdownButtonFormField<String>(
-                initialValue: category,
-                items: const [
-                  DropdownMenuItem(
-                    value: 'announcement',
-                    child: Text('Announcement'),
-                  ),
-                  DropdownMenuItem(value: 'event', child: Text('Event')),
-                  DropdownMenuItem(
-                    value: 'accomplishment',
-                    child: Text('Accomplishment'),
-                  ),
-                  DropdownMenuItem(value: 'update', child: Text('Update')),
-                ],
-                onChanged: (value) {
-                  setDialogState(() => category = value ?? 'announcement');
-                },
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: controller,
-                maxLines: 4,
-                decoration: const InputDecoration(
-                  hintText: 'Write the post content',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-            TextButton(
-              onPressed: () async {
-                final text = controller.text.trim();
-                if (text.isEmpty) return;
-
-                Navigator.pop(context);
-                await _createPost(text, category);
-              },
-              child: const Text('Post'),
-            ),
-          ],
-        ),
-      ),
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const _CreatePostPage()),
     );
-  }
-
-  Future<void> _createPost(String content, String category) async {
-    setState(() => _isLoading = true);
-    try {
-      await MobileApiService.createWallPost(
-        content: content,
-        category: category,
-      );
-      if (mounted) _showMessage('Post created.');
-    } on MobileApiException catch (exception) {
-      if (mounted) _showMessage(exception.message);
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
+    if (mounted) setState(() {});
   }
 
   void _showMessage(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message), backgroundColor: AppColors.primaryRed),
+    );
+  }
+}
+
+class _CreatePostPage extends StatefulWidget {
+  const _CreatePostPage();
+
+  @override
+  State<_CreatePostPage> createState() => _CreatePostPageState();
+}
+
+class _CreatePostPageState extends State<_CreatePostPage> {
+  final TextEditingController _controller = TextEditingController();
+  String _category = 'announcement';
+  bool _isSubmitting = false;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    final content = _controller.text.trim();
+    if (content.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Write something before posting.')),
+      );
+      return;
+    }
+
+    setState(() => _isSubmitting = true);
+    try {
+      await MobileApiService.createWallPost(
+        content: content,
+        category: _category,
+      );
+      if (!mounted) return;
+      Navigator.pop(context, true);
+    } on MobileApiException catch (exception) {
+      if (mounted) {
+        setState(() => _isSubmitting = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(exception.message),
+            backgroundColor: AppColors.primaryRed,
+          ),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.lightGrayBg,
+      appBar: AppBar(
+        title: const Text('Create Post'),
+        backgroundColor: AppColors.primaryRed,
+        foregroundColor: Colors.white,
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          const Text(
+            'Create Post',
+            style: TextStyle(
+              fontSize: 26,
+              fontWeight: FontWeight.bold,
+              color: AppColors.darkGray,
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Share an announcement or update with the SK community.',
+            style: TextStyle(color: AppColors.lightText),
+          ),
+          const SizedBox(height: 24),
+          DropdownButtonFormField<String>(
+            initialValue: _category,
+            decoration: const InputDecoration(
+              labelText: 'Post type',
+              border: OutlineInputBorder(),
+              filled: true,
+              fillColor: Colors.white,
+            ),
+            items: const [
+              DropdownMenuItem(
+                value: 'announcement',
+                child: Text('Announcement'),
+              ),
+              DropdownMenuItem(value: 'event', child: Text('Event')),
+              DropdownMenuItem(
+                value: 'accomplishment',
+                child: Text('Accomplishment'),
+              ),
+              DropdownMenuItem(value: 'update', child: Text('Update')),
+            ],
+            onChanged: _isSubmitting
+                ? null
+                : (value) => setState(() => _category = value ?? 'announcement'),
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _controller,
+            enabled: !_isSubmitting,
+            maxLines: 10,
+            decoration: const InputDecoration(
+              hintText: 'Write the post content',
+              alignLabelWithHint: true,
+              border: OutlineInputBorder(),
+              filled: true,
+              fillColor: Colors.white,
+            ),
+          ),
+          const SizedBox(height: 24),
+          FilledButton(
+            onPressed: _isSubmitting ? null : _submit,
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.primaryRed,
+              padding: const EdgeInsets.symmetric(vertical: 16),
+            ),
+            child: Text(_isSubmitting ? 'Posting...' : 'Post'),
+          ),
+        ],
+      ),
     );
   }
 }

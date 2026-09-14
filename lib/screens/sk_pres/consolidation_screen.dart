@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../routes.dart';
 import '../../services/mobile_api_service.dart';
 import '../../ui/app_ui.dart';
 import '../../widgets/president_components.dart';
@@ -50,12 +49,6 @@ class _ConsolidationScreenState extends State<ConsolidationScreen> {
                 onLeadingTap: () => _scaffoldKey.currentState?.openDrawer(),
                 title: 'Consolidation',
                 subtitle: 'Barangay submissions',
-                trailing: [
-                  IconButton(
-                    onPressed: _isLoading ? null : _loadConsolidation,
-                    icon: const Icon(Icons.refresh, color: Colors.white),
-                  ),
-                ],
               ),
               if (_isLoading) const LinearProgressIndicator(minHeight: 3),
               Padding(

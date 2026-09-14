@@ -56,14 +56,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
       children: [
         _LogoCircle(
           backgroundColor: Colors.white,
-          child: const Text(
-            'SK',
-            style: TextStyle(
-              color: AppColors.primaryRed,
-              fontSize: 34,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
+          child: const AppLogo(width: 64, height: 64),
         ),
         const Text(
           'Reset Your Password',
@@ -127,14 +120,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
       children: [
         _LogoCircle(
           backgroundColor: const Color(0xFFFFCA28),
-          child: Text(
-            isPhone ? '#' : '@',
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 38,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
+          child: const AppLogo(width: 64, height: 64),
         ),
         const Text(
           'Reset Code Sent!',

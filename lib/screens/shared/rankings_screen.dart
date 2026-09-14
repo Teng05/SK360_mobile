@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../routes.dart';
 import '../../services/mobile_api_service.dart';
 import '../../ui/app_ui.dart';
 import '../../widgets/president_components.dart';
@@ -15,13 +14,11 @@ class RankingsScreen extends StatefulWidget {
 class _RankingsScreenState extends State<RankingsScreen> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   bool _isLoading = false;
+  String? _selectedHistoryPeriod;
 
   Map<String, dynamic> get _data => MobileApiService.syncedData ?? {};
   bool get _isPresident =>
       MobileApiService.currentUser?['role']?.toString() == 'sk_president';
-  bool get _isYouth =>
-      MobileApiService.currentUser?['role']?.toString() == 'youth';
-
   @override
   void initState() {
     super.initState();
@@ -34,17 +31,26 @@ class _RankingsScreenState extends State<RankingsScreen> {
   Widget build(BuildContext context) {
     final rankings = _rankings();
     final period = _latestPeriod(_rows('rankings'));
-    final topThree = rankings.take(3).toList();
+    final history = _history();
+    final historyPeriods = history
+        .map((entry) => _text(entry['period']))
+        .where((value) => value.isNotEmpty)
+        .toSet()
+        .toList();
+    final selectedPeriod = historyPeriods.contains(_selectedHistoryPeriod)
+        ? _selectedHistoryPeriod!
+        : historyPeriods.isNotEmpty
+            ? historyPeriods.first
+            : period;
+    final topThree = _historyRankings(history, selectedPeriod).take(3).toList();
 
     return Scaffold(
       key: _scaffoldKey,
       drawer: _isPresident ? const PresidentSideDrawer() : null,
       backgroundColor: AppColors.lightGrayBg,
-      bottomNavigationBar: _isPresident || _isYouth
+      bottomNavigationBar: _isPresident
           ? PresidentBottomNavBar(
-              activeItem: _isYouth
-                  ? PresidentNavItem.rankings
-                  : null,
+              activeItem: null,
               onItemSelected: _handleNavSelection,
             )
           : null,
@@ -57,22 +63,12 @@ class _RankingsScreenState extends State<RankingsScreen> {
               PresidentHeader(
                 leading: _isPresident
                     ? PresidentHeaderLeading.menu
-                    : _isYouth
-                        ? PresidentHeaderLeading.none
-                        : PresidentHeaderLeading.back,
+                    : PresidentHeaderLeading.back,
                 onLeadingTap: _isPresident
                     ? () => _scaffoldKey.currentState?.openDrawer()
-                    : _isYouth
-                        ? null
-                        : () => Navigator.maybePop(context),
+                    : () => Navigator.maybePop(context),
                 title: 'Rankings',
                 subtitle: period.isEmpty ? 'Barangay leaderboard' : period,
-                trailing: [
-                  IconButton(
-                    onPressed: _isLoading ? null : _refresh,
-                    icon: const Icon(Icons.refresh, color: Colors.white),
-                  ),
-                ],
               ),
               if (_isLoading) const LinearProgressIndicator(minHeight: 3),
               const SizedBox(height: 18),
@@ -82,6 +78,17 @@ class _RankingsScreenState extends State<RankingsScreen> {
                   child: _EmptyRankingState(),
                 )
               else ...[
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: _RankingHistoryDropdown(
+                    history: history,
+                    selectedPeriod: selectedPeriod,
+                    onChanged: (value) {
+                      setState(() => _selectedHistoryPeriod = value);
+                    },
+                  ),
+                ),
+                const SizedBox(height: 14),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: _TopThreeSection(rankings: topThree),
@@ -182,6 +189,45 @@ class _RankingsScreenState extends State<RankingsScreen> {
     });
 
     return _text(withPeriod.first['reporting_period']);
+  }
+
+  List<Map<String, dynamic>> _history() {
+    final history = _data['ranking_history'];
+    if (history is! List) return const [];
+
+    return history
+        .whereType<Map>()
+        .map((entry) => Map<String, dynamic>.from(entry))
+        .toList();
+  }
+
+  List<_RankingItem> _historyRankings(
+    List<Map<String, dynamic>> history,
+    String period,
+  ) {
+    Map<String, dynamic>? entry;
+    for (final item in history) {
+      if (_text(item['period']) == period) {
+        entry = item;
+        break;
+      }
+    }
+
+    final rows = (entry?['rankings'] as List<dynamic>? ?? [])
+        .whereType<Map>()
+        .map((row) {
+          final data = Map<String, dynamic>.from(row);
+          return _RankingItem(
+            rank: _number(data['rank']),
+            name: _text(data['barangay_name']),
+            points: _number(data['total_points']),
+            onTime: _number(data['timely_submission_points']),
+            completion: _number(data['completeness_points']),
+            engagement: _number(data['participation_points']),
+          );
+        })
+        .toList();
+    return rows;
   }
 
   List<Map<String, dynamic>> _rows(String key) {
@@ -299,24 +345,77 @@ class _TopRankCard extends StatelessWidget {
   }
 }
 
-class _LeaderboardPanel extends StatelessWidget {
+class _LeaderboardPanel extends StatefulWidget {
   final List<_RankingItem> rankings;
 
   const _LeaderboardPanel({required this.rankings});
 
   @override
+  State<_LeaderboardPanel> createState() => _LeaderboardPanelState();
+}
+
+class _LeaderboardPanelState extends State<_LeaderboardPanel> {
+  final _searchController = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final filtered = widget.rankings
+        .where((item) => item.name.toLowerCase().contains(_query.toLowerCase()))
+        .take(10)
+        .toList();
+
     return _Panel(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const _SectionLabel('Live Leaderboard'),
           const SizedBox(height: 12),
-          ...rankings.map(
-            (item) => Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: _RankingRow(item: item),
+          TextField(
+            controller: _searchController,
+            onChanged: (value) => setState(() => _query = value.trim()),
+            decoration: InputDecoration(
+              hintText: 'Search barangay...',
+              prefixIcon: const Icon(Icons.search),
+              suffixIcon: _query.isEmpty
+                  ? null
+                  : IconButton(
+                      onPressed: () {
+                        _searchController.clear();
+                        setState(() => _query = '');
+                      },
+                      icon: const Icon(Icons.clear),
+                    ),
+              filled: true,
+              fillColor: AppColors.lightGrayBg,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide.none,
+              ),
             ),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            height: 520,
+            child: filtered.isEmpty
+                ? const Center(
+                    child: Text(
+                      'No barangay found.',
+                      style: TextStyle(color: AppColors.lightText),
+                    ),
+                  )
+                : ListView.separated(
+                    primary: false,
+                    itemCount: filtered.length,
+                    separatorBuilder: (context, index) => const SizedBox(height: 10),
+                    itemBuilder: (_, index) => _RankingRow(item: filtered[index]),
+                  ),
           ),
         ],
       ),
@@ -677,6 +776,137 @@ class _RankingItem {
       onTime: onTime,
       completion: completion,
       engagement: engagement,
+    );
+  }
+}
+
+// Kept for compatibility with older cached routes; the dropdown below is the active UI.
+// ignore: unused_element
+class _RankingHistoryPanel extends StatelessWidget {
+  final List<Map<String, dynamic>> history;
+
+  const _RankingHistoryPanel({required this.history});
+
+  @override
+  Widget build(BuildContext context) {
+    return _Panel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Ranking History',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Top 3 barangays per month',
+            style: TextStyle(color: AppColors.lightText, fontSize: 12),
+          ),
+          const SizedBox(height: 10),
+          if (history.isEmpty)
+            const Text('No past ranking periods yet.', style: TextStyle(color: AppColors.lightText))
+          else
+            ...history.map(
+              (periodEntry) {
+                final rows = (periodEntry['rankings'] as List<dynamic>? ?? [])
+                    .whereType<Map>()
+                    .toList();
+                return ExpansionTile(
+                  tilePadding: EdgeInsets.zero,
+                  title: Text(
+                    _text(periodEntry['period']),
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  children: rows.isEmpty
+                      ? [
+                          const Padding(
+                            padding: EdgeInsets.only(bottom: 12),
+                            child: Text('No points recorded.', style: TextStyle(color: AppColors.lightText)),
+                          ),
+                        ]
+                      : [
+                          for (final row in rows)
+                            ListTile(
+                              dense: true,
+                              contentPadding: EdgeInsets.zero,
+                              leading: CircleAvatar(
+                                radius: 15,
+                                backgroundColor: AppColors.primaryRed,
+                                child: Text(
+                                  '#${_text(row['rank'])}',
+                                  style: const TextStyle(color: Colors.white, fontSize: 11),
+                                ),
+                              ),
+                              title: Text(_text(row['barangay_name'])),
+                              trailing: Text(
+                                '${_number(row['total_points'])} pts',
+                                style: const TextStyle(fontWeight: FontWeight.w700),
+                              ),
+                            ),
+                        ],
+                );
+              },
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RankingHistoryDropdown extends StatelessWidget {
+  final List<Map<String, dynamic>> history;
+  final String selectedPeriod;
+  final ValueChanged<String?> onChanged;
+
+  const _RankingHistoryDropdown({
+    required this.history,
+    required this.selectedPeriod,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final periods = history
+        .map((entry) => _text(entry['period']))
+        .where((period) => period.isNotEmpty)
+        .toSet()
+        .toList();
+
+    return _Panel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Ranking History',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Select a month to view its top barangays.',
+            style: TextStyle(color: AppColors.lightText, fontSize: 12),
+          ),
+          const SizedBox(height: 10),
+          if (periods.isEmpty)
+            const Text('No ranking periods yet.', style: TextStyle(color: AppColors.lightText))
+          else
+            DropdownButtonFormField<String>(
+              initialValue: periods.contains(selectedPeriod) ? selectedPeriod : null,
+              isExpanded: true,
+              decoration: InputDecoration(
+                labelText: 'Select month',
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              items: [
+                for (final period in periods)
+                  DropdownMenuItem(
+                    value: period,
+                    child: Text(period),
+                  ),
+              ],
+              onChanged: onChanged,
+            ),
+        ],
+      ),
     );
   }
 }

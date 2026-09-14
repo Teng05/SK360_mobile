@@ -15,7 +15,7 @@ class PrototypeCalendarScreen extends StatefulWidget {
 
 class _PrototypeCalendarScreenState extends State<PrototypeCalendarScreen> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
-  DateTime _visibleMonth = DateTime(2026, 1);
+  DateTime _visibleMonth = DateTime(DateTime.now().year, DateTime.now().month);
   DateTime _selectedDate = DateTime.now();
   bool _isLoading = false;
 

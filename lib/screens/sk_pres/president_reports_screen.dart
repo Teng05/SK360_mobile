@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../routes.dart';
 import '../../services/mobile_api_service.dart';
 import '../../ui/app_ui.dart';
 import '../../utils/submitted_file_opener.dart';
@@ -18,7 +17,6 @@ class _PresidentReportsScreenState extends State<PresidentReportsScreen> {
   final TextEditingController _searchController = TextEditingController();
   bool _isLoading = false;
   String _typeFilter = 'all';
-  String _statusFilter = 'all';
 
   @override
   void initState() {
@@ -60,12 +58,6 @@ class _PresidentReportsScreenState extends State<PresidentReportsScreen> {
                 onLeadingTap: () => _scaffoldKey.currentState?.openDrawer(),
                 title: 'View Reports',
                 subtitle: 'Submitted documents',
-                trailing: [
-                  IconButton(
-                    onPressed: _isLoading ? null : _refresh,
-                    icon: const Icon(Icons.refresh, color: Colors.white),
-                  ),
-                ],
               ),
               if (_isLoading) const LinearProgressIndicator(minHeight: 3),
               Padding(
@@ -103,12 +95,8 @@ class _PresidentReportsScreenState extends State<PresidentReportsScreen> {
                 child: _Filters(
                   searchController: _searchController,
                   typeFilter: _typeFilter,
-                  statusFilter: _statusFilter,
                   onTypeChanged: (value) {
                     setState(() => _typeFilter = value ?? 'all');
-                  },
-                  onStatusChanged: (value) {
-                    setState(() => _statusFilter = value ?? 'all');
                   },
                 ),
               ),
@@ -148,8 +136,6 @@ class _PresidentReportsScreenState extends State<PresidentReportsScreen> {
 
     return _allReports().where((report) {
       final matchesType = _typeFilter == 'all' || report.typeKey == _typeFilter;
-      final matchesStatus =
-          _statusFilter == 'all' || report.status.toLowerCase() == _statusFilter;
       final matchesSearch = query.isEmpty ||
           report.title.toLowerCase().contains(query) ||
           report.typeLabel.toLowerCase().contains(query) ||
@@ -163,7 +149,7 @@ class _PresidentReportsScreenState extends State<PresidentReportsScreen> {
           report.barangay.toLowerCase().contains(query) ||
           report.period.toLowerCase().contains(query);
 
-      return matchesType && matchesStatus && matchesSearch;
+      return matchesType && matchesSearch;
     }).toList();
   }
 
@@ -287,16 +273,12 @@ class _PresidentReportsScreenState extends State<PresidentReportsScreen> {
 class _Filters extends StatelessWidget {
   final TextEditingController searchController;
   final String typeFilter;
-  final String statusFilter;
   final ValueChanged<String?> onTypeChanged;
-  final ValueChanged<String?> onStatusChanged;
 
   const _Filters({
     required this.searchController,
     required this.typeFilter,
-    required this.statusFilter,
     required this.onTypeChanged,
-    required this.onStatusChanged,
   });
 
   @override
@@ -318,39 +300,21 @@ class _Filters extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: DropdownButtonFormField<String>(
-                  initialValue: typeFilter,
-                  decoration: _fieldDecoration('Type'),
-                  items: const [
-                    DropdownMenuItem(value: 'all', child: Text('All')),
-                    DropdownMenuItem(
-                      value: 'accomplishment',
-                      child: Text('Accomplishment'),
-                    ),
-                    DropdownMenuItem(value: 'budget', child: Text('Budget')),
-                  ],
-                  onChanged: onTypeChanged,
-                ),
+          DropdownButtonFormField<String>(
+            initialValue: typeFilter,
+            decoration: _fieldDecoration('Filter reports'),
+            items: const [
+              DropdownMenuItem(value: 'all', child: Text('All')),
+              DropdownMenuItem(
+                value: 'accomplishment',
+                child: Text('Report Submissions'),
               ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: DropdownButtonFormField<String>(
-                  initialValue: statusFilter,
-                  decoration: _fieldDecoration('Status'),
-                  items: const [
-                    DropdownMenuItem(value: 'all', child: Text('All')),
-                    DropdownMenuItem(value: 'submitted', child: Text('Submitted')),
-                    DropdownMenuItem(value: 'recorded', child: Text('Recorded')),
-                    DropdownMenuItem(value: 'approved', child: Text('Approved')),
-                    DropdownMenuItem(value: 'draft', child: Text('Draft')),
-                  ],
-                  onChanged: onStatusChanged,
-                ),
+              DropdownMenuItem(
+                value: 'budget',
+                child: Text('Budget Reports'),
               ),
             ],
+            onChanged: onTypeChanged,
           ),
         ],
       ),
