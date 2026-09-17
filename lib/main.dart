@@ -201,16 +201,26 @@ class SplashScreen extends StatefulWidget {
   State<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen> {
+class _SplashScreenState extends State<SplashScreen>
+    with SingleTickerProviderStateMixin {
+  static const _minimumDuration = Duration(seconds: 6);
+  late final AnimationController _progressController;
+
   @override
   void initState() {
     super.initState();
+    _progressController = AnimationController(
+      vsync: this,
+      duration: _minimumDuration,
+    )..forward();
     _navigateToLogin();
   }
 
   Future<void> _navigateToLogin() async {
-    await Future.delayed(const Duration(milliseconds: 800));
+    final startedAt = DateTime.now();
     final restored = await MobileApiService.restoreSession();
+    final remaining = _minimumDuration - DateTime.now().difference(startedAt);
+    if (remaining > Duration.zero) await Future.delayed(remaining);
     if (!mounted) return;
 
     if (restored) {
@@ -219,6 +229,12 @@ class _SplashScreenState extends State<SplashScreen> {
     } else {
       Navigator.pushReplacementNamed(context, AppRoutes.login);
     }
+  }
+
+  @override
+  void dispose() {
+    _progressController.dispose();
+    super.dispose();
   }
 
   String _homeRouteForRole(String? role) {
@@ -234,27 +250,59 @@ class _SplashScreenState extends State<SplashScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.lightGrayBg,
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: const [
-            _SplashLogo(),
-            SizedBox(height: 32),
-            Text(
+      body: SafeArea(
+        child: Stack(
+          children: [
+            Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: const [
+                  _SplashLogo(),
+                  SizedBox(height: 32),
+                  Text(
               'SK 360°',
-              style: TextStyle(
-                fontSize: 36,
-                fontWeight: FontWeight.bold,
-                color: AppColors.darkGray,
+                    style: TextStyle(
+                      fontSize: 36,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.darkGray,
+                    ),
+                  ),
+                  SizedBox(height: 80),
+                  Text(
+                    'Empowering SK Governance',
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: AppColors.lightText,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
               ),
             ),
-            SizedBox(height: 80),
-            Text(
-              'Empowering SK Governance',
-              style: TextStyle(
-                fontSize: 16,
-                color: AppColors.lightText,
-                fontWeight: FontWeight.w500,
+            Positioned(
+              left: 28,
+              right: 28,
+              bottom: 24,
+              child: Column(
+                children: [
+                  AnimatedBuilder(
+                    animation: _progressController,
+                    builder: (context, child) => LinearProgressIndicator(
+                      value: _progressController.value,
+                      minHeight: 5,
+                      borderRadius: BorderRadius.circular(8),
+                      backgroundColor: AppColors.borderPink,
+                      valueColor: const AlwaysStoppedAnimation<Color>(
+                        AppColors.primaryRed,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  const Text(
+                    'Starting your app...',
+                    style: TextStyle(color: AppColors.lightText, fontSize: 12),
+                  ),
+                ],
               ),
             ),
           ],

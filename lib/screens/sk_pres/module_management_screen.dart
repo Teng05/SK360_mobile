@@ -301,6 +301,30 @@ class _ModuleManagementScreenState extends State<ModuleManagementScreen> {
     final slotId = int.tryParse('${slot['slot_id']}');
     if (slotId == null) return;
 
+    final title = slot['title']?.toString() ?? 'this submission slot';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        icon: const Icon(Icons.delete_outline, color: AppColors.primaryRed),
+        title: const Text('Delete submission slot?'),
+        content: Text(
+          'Are you sure you want to remove "$title"? This action cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppColors.primaryRed),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
     setState(() => _isLoading = true);
     try {
       await MobileApiService.deleteSubmissionSlot(slotId);

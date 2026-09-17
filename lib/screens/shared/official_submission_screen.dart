@@ -19,7 +19,8 @@ class OfficialSubmissionScreen extends StatefulWidget {
       _OfficialSubmissionScreenState();
 }
 
-class _OfficialSubmissionScreenState extends State<OfficialSubmissionScreen> {
+class _OfficialSubmissionScreenState extends State<OfficialSubmissionScreen>
+    with WidgetsBindingObserver {
   static const MethodChannel _fileChannel = MethodChannel('sk360/file_viewer');
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   bool _isLoading = false;
@@ -38,7 +39,19 @@ class _OfficialSubmissionScreenState extends State<OfficialSubmissionScreen> {
   @override
   void initState() {
     super.initState();
-    if (MobileApiService.syncedData == null) _refresh();
+    WidgetsBinding.instance.addObserver(this);
+    _refresh();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _refresh();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
   }
 
   @override
@@ -121,18 +134,18 @@ class _OfficialSubmissionScreenState extends State<OfficialSubmissionScreen> {
   }
 
   List<Map<String, dynamic>> _activeSlots() {
-    final role = MobileApiService.currentUser?['role']?.toString();
-    final roleLabel = role == 'sk_secretary' ? 'SK Secretary' : 'SK Chairman';
+    final role = MobileApiService.currentUser?['role']?.toString().trim().toLowerCase();
+    final roleLabel = role == 'sk_secretary' ? 'sk secretary' : 'sk chairman';
     final now = DateTime.now();
     final rows = _rows('submission_slots');
 
     return rows.where((slot) {
-      final type = slot['submission_type']?.toString() ?? '';
-      final status = slot['status']?.toString().toLowerCase() ?? 'open';
-      final slotRole = slot['role']?.toString() ?? '';
+      final type = slot['submission_type']?.toString().trim().toLowerCase();
+      final status = slot['status']?.toString().trim().toLowerCase();
+      final slotRole = slot['role']?.toString().trim().toLowerCase();
       final start = DateTime.tryParse(slot['start_date']?.toString() ?? '');
       final end = DateTime.tryParse(slot['end_date']?.toString() ?? '');
-      final inRole = slotRole == roleLabel || slotRole == 'Both';
+      final inRole = slotRole == roleLabel || slotRole == 'both';
       final inDate = (start == null || !now.isBefore(start)) &&
           (end == null || !now.isAfter(end.add(const Duration(days: 1))));
       return type == _submissionType && status == 'open' && inRole && inDate;
@@ -158,116 +171,35 @@ class _OfficialSubmissionScreenState extends State<OfficialSubmissionScreen> {
   }
 
   Future<void> _submit(Map<String, dynamic> slot) async {
-    final remarksController = TextEditingController();
-    String reportType = widget.kind == SubmissionKind.budget ? 'annual' : 'monthly';
-    String quarter = 'Q1';
-    PdfUpload? selectedFile;
-    String selectedFileName = '';
-    final now = DateTime.now();
-
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: Text('Submit ${slot['title'] ?? _title}'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                DropdownButtonFormField<String>(
-                  initialValue: reportType,
-                  decoration: const InputDecoration(labelText: 'Period type'),
-                  items: const [
-                    DropdownMenuItem(value: 'monthly', child: Text('Monthly')),
-                    DropdownMenuItem(value: 'quarterly', child: Text('Quarterly')),
-                    DropdownMenuItem(value: 'annual', child: Text('Annual')),
-                  ],
-                  onChanged: (value) =>
-                      setDialogState(() => reportType = value ?? reportType),
-                ),
-                if (reportType == 'quarterly')
-                  DropdownButtonFormField<String>(
-                    initialValue: quarter,
-                    decoration: const InputDecoration(labelText: 'Quarter'),
-                    items: const [
-                      DropdownMenuItem(value: 'Q1', child: Text('Q1')),
-                      DropdownMenuItem(value: 'Q2', child: Text('Q2')),
-                      DropdownMenuItem(value: 'Q3', child: Text('Q3')),
-                      DropdownMenuItem(value: 'Q4', child: Text('Q4')),
-                    ],
-                    onChanged: (value) =>
-                        setDialogState(() => quarter = value ?? quarter),
-                  ),
-                const SizedBox(height: 12),
-                OutlinedButton.icon(
-                  onPressed: () async {
-                    _showMessage('Opening PDF picker...');
-                    final picked = await _pickPdf();
-                    if (picked == null) return;
-                    setDialogState(() {
-                      selectedFile = picked;
-                      selectedFileName = picked.name;
-                    });
-                  },
-                  icon: const Icon(Icons.picture_as_pdf_outlined),
-                  label: Text(
-                    selectedFileName.isEmpty
-                        ? 'Choose PDF file'
-                        : selectedFileName,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: remarksController,
-                  maxLines: 4,
-                  decoration: const InputDecoration(
-                    labelText: 'Remarks or summary',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: AppColors.primaryRed),
-              onPressed: selectedFile == null
-                  ? null
-                  : () => Navigator.pop(context, true),
-              child: const Text('Submit'),
-            ),
-          ],
+    final draft = await Navigator.of(context).push<_SubmissionDraft>(
+      MaterialPageRoute(
+        builder: (_) => _SubmissionFormPage(
+          title: slot['title']?.toString() ?? _title,
+          kind: widget.kind,
+          pickPdf: _pickPdf,
         ),
       ),
     );
+    if (draft == null || !mounted) return;
 
-    if (confirmed != true) {
-      remarksController.dispose();
-      return;
-    }
+    final now = DateTime.now();
 
     setState(() => _isLoading = true);
     try {
       await MobileApiService.storeOfficialSubmission(
         slotId: _int(slot['slot_id']),
         submissionType: _submissionType,
-        pdfFile: selectedFile!,
-        reportType: reportType,
+        pdfFile: draft.file,
+        reportType: draft.reportType,
         reportingYear: now.year,
-        reportingMonth: reportType == 'monthly' ? now.month : null,
-        reportingQuarter: reportType == 'quarterly' ? quarter : null,
-        remarks: remarksController.text,
+        reportingMonth: draft.reportType == 'monthly' ? now.month : null,
+        reportingQuarter: draft.reportType == 'quarterly' ? draft.quarter : null,
+        remarks: draft.remarks,
       );
       if (mounted) _showMessage('Submission synced.');
     } on MobileApiException catch (exception) {
       if (mounted) _showMessage(exception.message);
     } finally {
-      remarksController.dispose();
       if (mounted) setState(() => _isLoading = false);
     }
   }
@@ -298,6 +230,7 @@ class _OfficialSubmissionScreenState extends State<OfficialSubmissionScreen> {
   }
 
   Future<void> _refresh() async {
+    if (_isLoading) return;
     setState(() => _isLoading = true);
     try {
       await MobileApiService.sync();
@@ -315,6 +248,159 @@ class _OfficialSubmissionScreenState extends State<OfficialSubmissionScreen> {
   void _showMessage(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message), backgroundColor: AppColors.primaryRed),
+    );
+  }
+}
+
+class _SubmissionDraft {
+  final PdfUpload file;
+  final String reportType;
+  final String quarter;
+  final String remarks;
+
+  const _SubmissionDraft({
+    required this.file,
+    required this.reportType,
+    required this.quarter,
+    required this.remarks,
+  });
+}
+
+class _SubmissionFormPage extends StatefulWidget {
+  final String title;
+  final SubmissionKind kind;
+  final Future<PdfUpload?> Function() pickPdf;
+
+  const _SubmissionFormPage({
+    required this.title,
+    required this.kind,
+    required this.pickPdf,
+  });
+
+  @override
+  State<_SubmissionFormPage> createState() => _SubmissionFormPageState();
+}
+
+class _SubmissionFormPageState extends State<_SubmissionFormPage> {
+  final _remarksController = TextEditingController();
+  late String _reportType;
+  String _quarter = 'Q1';
+  PdfUpload? _file;
+  bool _isPickingFile = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _reportType = widget.kind == SubmissionKind.budget ? 'annual' : 'monthly';
+  }
+
+  @override
+  void dispose() {
+    _remarksController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Submit ${widget.title}'),
+        backgroundColor: AppColors.primaryRed,
+        foregroundColor: Colors.white,
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          DropdownButtonFormField<String>(
+            initialValue: _reportType,
+            decoration: const InputDecoration(labelText: 'Period type'),
+            items: const [
+              DropdownMenuItem(value: 'monthly', child: Text('Monthly')),
+              DropdownMenuItem(value: 'quarterly', child: Text('Quarterly')),
+              DropdownMenuItem(value: 'annual', child: Text('Annual')),
+            ],
+            onChanged: (value) {
+              if (value != null) setState(() => _reportType = value);
+            },
+          ),
+          if (_reportType == 'quarterly') ...[
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              initialValue: _quarter,
+              decoration: const InputDecoration(labelText: 'Quarter'),
+              items: const [
+                DropdownMenuItem(value: 'Q1', child: Text('Q1')),
+                DropdownMenuItem(value: 'Q2', child: Text('Q2')),
+                DropdownMenuItem(value: 'Q3', child: Text('Q3')),
+                DropdownMenuItem(value: 'Q4', child: Text('Q4')),
+              ],
+              onChanged: (value) {
+                if (value != null) setState(() => _quarter = value);
+              },
+            ),
+          ],
+          const SizedBox(height: 16),
+          OutlinedButton.icon(
+            onPressed: _isPickingFile ? null : _chooseFile,
+            icon: const Icon(Icons.picture_as_pdf_outlined),
+            label: Text(_file?.name ?? 'Choose PDF file'),
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _remarksController,
+            maxLines: 4,
+            decoration: const InputDecoration(
+              labelText: 'Remarks or summary',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 24),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Cancel'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: FilledButton(
+                  onPressed: _file == null ? null : _submit,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppColors.primaryRed,
+                  ),
+                  child: const Text('Continue'),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _chooseFile() async {
+    setState(() => _isPickingFile = true);
+    final file = await widget.pickPdf();
+    if (!mounted) return;
+    setState(() {
+      _file = file ?? _file;
+      _isPickingFile = false;
+    });
+  }
+
+  void _submit() {
+    final file = _file;
+    if (file == null) return;
+    FocusScope.of(context).unfocus();
+    Navigator.of(context).pop(
+      _SubmissionDraft(
+        file: file,
+        reportType: _reportType,
+        quarter: _quarter,
+        remarks: _remarksController.text,
+      ),
     );
   }
 }

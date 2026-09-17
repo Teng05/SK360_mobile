@@ -26,9 +26,7 @@ class _PrototypeCalendarScreenState extends State<PrototypeCalendarScreen> {
   @override
   void initState() {
     super.initState();
-    if (MobileApiService.syncedData == null) {
-      _refresh();
-    }
+    _refresh();
   }
 
   @override

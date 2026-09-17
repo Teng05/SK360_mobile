@@ -20,6 +20,7 @@ class _ChatScreenState extends State<ChatScreen> {
   final TextEditingController _messageController = TextEditingController();
   Timer? _pollTimer;
   bool _isLoading = false;
+  bool _isLoadingUsers = false;
   bool _isSending = false;
   bool _showEmojiPicker = false;
   List<ChatRoom> _rooms = [];
@@ -78,6 +79,18 @@ class _ChatScreenState extends State<ChatScreen> {
                   : () => _scaffoldKey.currentState?.openDrawer(),
               title: isThreadOpen ? activeName : 'Chat',
               subtitle: isThreadOpen ? 'Conversation' : 'Messages',
+              trailing: isThreadOpen
+                  ? null
+                  : [
+                      IconButton(
+                        tooltip: 'Create group chat',
+                        onPressed: _isLoading ? null : _createGroupChat,
+                        icon: const Icon(
+                          Icons.group_add_outlined,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
             ),
             if (_isLoading) const LinearProgressIndicator(minHeight: 3),
             Expanded(
@@ -119,6 +132,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       users: _users,
                       activeRoom: _activeRoom,
                       currentUserName: _userName,
+                      currentUserId: _userId,
                       searchController: _searchController,
                       onSearch: _loadUsers,
                       onRoomTap: _openRoom,
@@ -146,11 +160,14 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _loadUsers([String search = '']) async {
+    if (mounted) setState(() => _isLoadingUsers = true);
     try {
       final users = await MobileApiService.chatUsers(search: search);
       if (mounted) setState(() => _users = users);
     } on MobileApiException catch (exception) {
       if (mounted) _showMessage(exception.message);
+    } finally {
+      if (mounted) setState(() => _isLoadingUsers = false);
     }
   }
 
@@ -173,6 +190,178 @@ class _ChatScreenState extends State<ChatScreen> {
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  Future<void> _createGroupChat() async {
+    final nameController = TextEditingController();
+    final searchController = TextEditingController();
+    final selectedIds = <String>{};
+    var creating = false;
+    String? error;
+
+    final room = await showDialog<ChatRoom>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final currentId = _userId;
+          final query = searchController.text.trim().toLowerCase();
+          final candidates = _users.where((user) {
+            final id = user['id']?.toString() ?? '';
+            final name = user['name']?.toString() ?? '';
+            final role = user['role']?.toString() ?? '';
+            return id.isNotEmpty && id != currentId &&
+                ('$name $role').toLowerCase().contains(query);
+          }).toList();
+
+          return AlertDialog(
+            title: const Text('Create group chat'),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: nameController,
+                    enabled: !creating,
+                    maxLength: 80,
+                    decoration: const InputDecoration(
+                      labelText: 'Group name',
+                      hintText: 'Enter a group name',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: searchController,
+                    enabled: !creating,
+                    onChanged: (_) => setDialogState(() => error = null),
+                    decoration: const InputDecoration(
+                      labelText: 'Add members',
+                      hintText: 'Search registered accounts',
+                      prefixIcon: Icon(Icons.search),
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'You are included automatically. Select at least one member.',
+                      style: TextStyle(fontSize: 12, color: AppColors.lightText),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Flexible(
+                    child: _isLoadingUsers
+                        ? const Center(child: CircularProgressIndicator())
+                        : candidates.isEmpty
+                        ? const Center(
+                            child: Text('No matching registered accounts.'),
+                          )
+                        : ListView.builder(
+                            shrinkWrap: true,
+                            itemCount: candidates.length,
+                            itemBuilder: (context, index) {
+                              final user = candidates[index];
+                              final id = user['id'].toString();
+                              final isSelected = selectedIds.contains(id);
+                              return CheckboxListTile(
+                                value: isSelected,
+                                dense: true,
+                                contentPadding: EdgeInsets.zero,
+                                title: Text(user['name']?.toString() ?? 'User'),
+                                subtitle: Text(user['role']?.toString() ?? ''),
+                                onChanged: creating
+                                    ? null
+                                    : (value) => setDialogState(() {
+                                          if (value == true) {
+                                            selectedIds.add(id);
+                                          } else {
+                                            selectedIds.remove(id);
+                                          }
+                                          error = null;
+                                        }),
+                              );
+                            },
+                          ),
+                  ),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text('${selectedIds.length} selected'),
+                  ),
+                  if (error != null)
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        error!,
+                        style: const TextStyle(color: AppColors.primaryRed),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: creating ? null : () => Navigator.pop(dialogContext),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: creating
+                    ? null
+                    : () async {
+                        final groupName = nameController.text.trim();
+                        final selected = _users.where(
+                          (user) => selectedIds.contains(user['id']?.toString()),
+                        );
+                        if (groupName.isEmpty || selectedIds.isEmpty) {
+                          setDialogState(() {
+                            error = 'Enter a group name and select at least one member.';
+                          });
+                          return;
+                        }
+
+                        setDialogState(() {
+                          creating = true;
+                          error = null;
+                        });
+                        try {
+                          final createdRoom =
+                              await FirebaseChatService.createGroupRoom(
+                            name: groupName,
+                            currentUserId: _userId,
+                            currentUserName: _userName,
+                            members: selected
+                                .map((user) => {
+                                      'id': user['id'].toString(),
+                                      'name': user['name']?.toString() ?? 'User',
+                                    })
+                                .toList(),
+                          );
+                          if (dialogContext.mounted) {
+                            Navigator.pop(dialogContext, createdRoom);
+                          }
+                        } on ChatException catch (exception) {
+                          if (dialogContext.mounted) {
+                            setDialogState(() {
+                              creating = false;
+                              error = exception.message;
+                            });
+                          }
+                        }
+                      },
+                child: Text(creating ? 'Creating...' : 'Create group'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+
+    nameController.dispose();
+    searchController.dispose();
+    if (!mounted || room == null) return;
+    setState(() => _rooms = [room, ..._rooms.where((item) => item.id != room.id)]);
+    await _openRoom(room);
   }
 
   Future<void> _openRoom(ChatRoom room) async {
@@ -260,6 +449,7 @@ class _RoomRail extends StatelessWidget {
   final List<Map<String, dynamic>> users;
   final ChatRoom? activeRoom;
   final String currentUserName;
+  final String currentUserId;
   final TextEditingController searchController;
   final ValueChanged<String> onSearch;
   final ValueChanged<ChatRoom> onRoomTap;
@@ -270,6 +460,7 @@ class _RoomRail extends StatelessWidget {
     required this.users,
     required this.activeRoom,
     required this.currentUserName,
+    required this.currentUserId,
     required this.searchController,
     required this.onSearch,
     required this.onRoomTap,
@@ -299,6 +490,7 @@ class _RoomRail extends StatelessWidget {
             ...rooms.map(
               (room) => _RoomTile(
                 name: room.displayNameFor(currentUserName),
+                profilePictureUrl: _roomPhoto(room),
                 active: room.id == activeRoom?.id,
                 onTap: () => onRoomTap(room),
               ),
@@ -307,14 +499,28 @@ class _RoomRail extends StatelessWidget {
       ),
     );
   }
+
+  String? _roomPhoto(ChatRoom room) {
+    final otherId = room.memberIds.firstWhere(
+      (id) => id != currentUserId,
+      orElse: () => '',
+    );
+    for (final user in users) {
+      if (user['id']?.toString() == otherId) {
+        return user['profile_pic_url']?.toString();
+      }
+    }
+    return null;
+  }
 }
 
 class _RoomTile extends StatelessWidget {
   final String name;
+  final String? profilePictureUrl;
   final bool active;
   final VoidCallback onTap;
 
-  const _RoomTile({required this.name, required this.active, required this.onTap});
+  const _RoomTile({required this.name, required this.active, required this.onTap, this.profilePictureUrl});
 
   @override
   Widget build(BuildContext context) {
@@ -326,7 +532,12 @@ class _RoomTile extends StatelessWidget {
       leading: CircleAvatar(
         radius: 16,
         backgroundColor: AppColors.primaryRed,
-        child: Text(_initials(name), style: const TextStyle(color: Colors.white, fontSize: 11)),
+        backgroundImage: profilePictureUrl?.isNotEmpty == true
+            ? NetworkImage(profilePictureUrl!)
+            : null,
+        child: profilePictureUrl?.isNotEmpty == true
+            ? null
+            : Text(_initials(name), style: const TextStyle(color: Colors.white, fontSize: 11)),
       ),
       title: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis),
       onTap: onTap,
@@ -349,7 +560,12 @@ class _UserTile extends StatelessWidget {
       leading: CircleAvatar(
         radius: 16,
         backgroundColor: const Color(0xFF22C55E),
-        child: Text(_initials(name), style: const TextStyle(color: Colors.white, fontSize: 11)),
+        backgroundImage: user['profile_pic_url']?.toString().isNotEmpty == true
+            ? NetworkImage(user['profile_pic_url'].toString())
+            : null,
+        child: user['profile_pic_url']?.toString().isNotEmpty == true
+            ? null
+            : Text(_initials(name), style: const TextStyle(color: Colors.white, fontSize: 11)),
       ),
       title: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis),
       subtitle: Text(user['role']?.toString() ?? '', maxLines: 1, overflow: TextOverflow.ellipsis),

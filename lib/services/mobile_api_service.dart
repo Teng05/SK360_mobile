@@ -206,18 +206,87 @@ class MobileApiService {
   static Future<Map<String, dynamic>> updateProfile({
     required String firstName,
     required String lastName,
+    File? profilePicture,
   }) async {
-    final response = await _request(
-      'POST',
-      '/profile',
-      body: {'first_name': firstName, 'last_name': lastName},
-    );
+    final response = profilePicture == null
+        ? await _request(
+            'POST',
+            '/profile',
+            body: {'first_name': firstName, 'last_name': lastName},
+          )
+        : await _uploadProfile(firstName, lastName, profilePicture);
 
     currentUser = response['user'] as Map<String, dynamic>? ?? currentUser;
     await _saveSession();
     await sync();
 
     return response;
+  }
+
+  static Future<Map<String, dynamic>> _uploadProfile(
+    String firstName,
+    String lastName,
+    File picture,
+  ) async {
+    final boundary = 'sk360-${DateTime.now().microsecondsSinceEpoch}';
+    final client = HttpClient();
+    try {
+      final request = await client.postUrl(Uri.parse('$baseUrl/profile'));
+      request.headers.set(HttpHeaders.acceptHeader, 'application/json');
+      request.headers.contentType = ContentType(
+        'multipart',
+        'form-data',
+        parameters: {'boundary': boundary},
+      );
+      if (_accessToken != null) {
+        request.headers.set(
+          HttpHeaders.authorizationHeader,
+          'Bearer $_accessToken',
+        );
+      }
+
+      void field(String name, String value) {
+        request.write('--$boundary\r\n');
+        request.write('Content-Disposition: form-data; name="$name"\r\n\r\n');
+        request.write('$value\r\n');
+      }
+
+      field('first_name', firstName);
+      field('last_name', lastName);
+      final fileName = picture.path.split(Platform.pathSeparator).last;
+      final extension = fileName.split('.').last.toLowerCase();
+      final mimeType = switch (extension) {
+        'png' => 'image/png',
+        'webp' => 'image/webp',
+        _ => 'image/jpeg',
+      };
+      request.write('--$boundary\r\n');
+      request.write(
+        'Content-Disposition: form-data; name="profile_pic"; filename="$fileName"\r\n',
+      );
+      request.write('Content-Type: $mimeType\r\n\r\n');
+      request.add(await picture.readAsBytes());
+      request.write('\r\n--$boundary--\r\n');
+
+      final response = await request.close();
+      final body = await response.transform(utf8.decoder).join();
+      final decoded = body.isEmpty
+          ? <String, dynamic>{}
+          : jsonDecode(body) as Map<String, dynamic>;
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw MobileApiException(
+          decoded['message']?.toString() ?? 'Profile picture upload failed.',
+          statusCode: response.statusCode,
+        );
+      }
+      return decoded;
+    } on SocketException {
+      throw MobileApiException('Cannot reach the web server.');
+    } on FormatException {
+      throw MobileApiException('The web server returned an invalid response.');
+    } finally {
+      client.close(force: true);
+    }
   }
 
   static Future<Map<String, dynamic>> updatePassword({

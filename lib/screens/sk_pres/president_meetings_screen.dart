@@ -24,9 +24,7 @@ class _PresidentMeetingsScreenState extends State<PresidentMeetingsScreen> {
   @override
   void initState() {
     super.initState();
-    if (MobileApiService.syncedData == null) {
-      _refresh();
-    }
+    _refresh();
   }
 
   @override

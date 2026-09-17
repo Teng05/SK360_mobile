@@ -87,6 +87,38 @@ class FirebaseChatService {
     return ChatRoom.fromDocument(created.first);
   }
 
+  static Future<ChatRoom> createGroupRoom({
+    required String name,
+    required String currentUserId,
+    required String currentUserName,
+    required List<Map<String, String>> members,
+  }) async {
+    final allMembers = [
+      ...members,
+      {'id': currentUserId, 'name': currentUserName},
+    ];
+    final memberIds = allMembers.map((member) => member['id']!).toSet().toList();
+    final memberNames = allMembers
+        .fold<Map<String, String>>({}, (names, member) {
+          names[member['id']!] = member['name']!;
+          return names;
+        })
+        .values
+        .toList();
+
+    final created = await _postDocument('chat_rooms', {
+      'name': _string(name),
+      'type': _string('group'),
+      'groupKind': _string('custom'),
+      'createdBy': _string(currentUserId),
+      'createdAt': _timestamp(DateTime.now()),
+      'memberIds': _array(memberIds.map(_string).toList()),
+      'memberNames': _array(memberNames.map(_string).toList()),
+    });
+
+    return ChatRoom.fromDocument(created);
+  }
+
   static Future<List<ChatMessage>> messages(String roomId) async {
     final docs = await _runQuery({
       'structuredQuery': {
@@ -147,15 +179,16 @@ class FirebaseChatService {
         .toList();
   }
 
-  static Future<void> _postDocument(
+  static Future<Map<String, dynamic>> _postDocument(
     String collection,
     Map<String, dynamic> fields,
   ) async {
-    await _request(
+    final response = await _request(
       'POST',
       '$_base/$collection?key=$_apiKey',
       body: {'fields': fields},
     );
+    return Map<String, dynamic>.from(jsonDecode(response) as Map);
   }
 
   static Future<String> _request(
@@ -210,12 +243,16 @@ class FirebaseChatService {
 class ChatRoom {
   final String id;
   final String name;
+  final String type;
+  final List<String> memberIds;
   final List<String> memberNames;
   final DateTime createdAt;
 
   const ChatRoom({
     required this.id,
     required this.name,
+    required this.type,
+    required this.memberIds,
     required this.memberNames,
     required this.createdAt,
   });
@@ -225,6 +262,8 @@ class ChatRoom {
     return ChatRoom(
       id: doc['name'].toString().split('/').last,
       name: _fieldString(fields['name']),
+      type: _fieldString(fields['type']),
+      memberIds: _fieldArray(fields['memberIds']),
       memberNames: _fieldArray(fields['memberNames']),
       createdAt: DateTime.tryParse(_fieldTimestamp(fields['createdAt'])) ??
           DateTime.fromMillisecondsSinceEpoch(0),
@@ -232,6 +271,7 @@ class ChatRoom {
   }
 
   String displayNameFor(String currentUserName) {
+    if (type == 'group') return name.isEmpty ? 'Group Chat' : name;
     final other = memberNames.firstWhere(
       (name) => name != currentUserName,
       orElse: () => name,

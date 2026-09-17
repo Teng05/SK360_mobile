@@ -29,9 +29,7 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
   @override
   void initState() {
     super.initState();
-    if (MobileApiService.syncedData == null) {
-      _refresh();
-    }
+    _refresh();
   }
 
   @override
@@ -132,10 +130,11 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
                 child: _UpcomingMeetingsCard(meetings: meetings),
               ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                child: _QuickActions(onOpen: _openRoute),
-              ),
+              if (_user['role']?.toString() == 'sk_president')
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                  child: _QuickActions(onOpen: _openRoute),
+                ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
                 child: _SharedWallComposer(
@@ -383,7 +382,7 @@ class _UpcomingMeetingsCard extends StatelessWidget {
 }
 
 bool _isUpcomingMeeting(Map<String, dynamic> meeting) {
-  final status = meeting['status']?.toString().toLowerCase();
+  final status = meeting['status']?.toString().trim().toLowerCase();
   if (status == 'completed' ||
       status == 'done' ||
       status == 'cancelled' ||
@@ -392,7 +391,8 @@ bool _isUpcomingMeeting(Map<String, dynamic> meeting) {
   }
 
   final scheduledAt = _meetingDateTime(meeting);
-  return scheduledAt != null && scheduledAt.isAfter(DateTime.now());
+  return scheduledAt != null &&
+      !scheduledAt.add(const Duration(hours: 1)).isBefore(DateTime.now());
 }
 
 int _compareMeetings(Map<String, dynamic> a, Map<String, dynamic> b) {

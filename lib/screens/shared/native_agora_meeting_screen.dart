@@ -25,12 +25,23 @@ class NativeAgoraMeetingScreen extends StatefulWidget {
 class _NativeAgoraMeetingScreenState extends State<NativeAgoraMeetingScreen> {
   RtcEngine? _engine;
   final List<int> _remoteUids = [];
+  final Set<int> _cameraOffUids = {};
   int? _activeSpeakerUid;
   String _channel = '';
   String _status = 'Joining meeting...';
   bool _muted = false;
   bool _cameraOff = false;
+  bool _cameraBusy = false;
   bool _joined = false;
+
+  String get _currentUserName {
+    final user = MobileApiService.currentUser ?? {};
+    final name = [user['first_name'], user['last_name']]
+        .where((part) => part != null && part.toString().trim().isNotEmpty)
+        .join(' ')
+        .trim();
+    return name.isEmpty ? 'You' : name;
+  }
 
   @override
   void initState() {
@@ -89,6 +100,7 @@ class _NativeAgoraMeetingScreenState extends State<NativeAgoraMeetingScreen> {
           onUserOffline: (connection, remoteUid, reason) {
             setState(() {
               _remoteUids.remove(remoteUid);
+              _cameraOffUids.remove(remoteUid);
               if (_activeSpeakerUid == remoteUid) _activeSpeakerUid = null;
               _status = _remoteUids.isEmpty
                   ? 'Waiting for other participants...'
@@ -98,6 +110,15 @@ class _NativeAgoraMeetingScreenState extends State<NativeAgoraMeetingScreen> {
           onActiveSpeaker: (connection, uid) {
             if (uid == 0 || !_remoteUids.contains(uid)) return;
             setState(() => _activeSpeakerUid = uid);
+          },
+          onUserMuteVideo: (connection, remoteUid, muted) {
+            setState(() {
+              if (muted) {
+                _cameraOffUids.add(remoteUid);
+              } else {
+                _cameraOffUids.remove(remoteUid);
+              }
+            });
           },
           onError: (err, msg) {
             setState(() => _status = 'Agora error: $msg');
@@ -163,9 +184,18 @@ class _NativeAgoraMeetingScreenState extends State<NativeAgoraMeetingScreen> {
   }
 
   Future<void> _toggleCamera() async {
+    final engine = _engine;
+    if (engine == null || _cameraBusy) return;
     final next = !_cameraOff;
-    await _engine?.muteLocalVideoStream(next);
     setState(() => _cameraOff = next);
+    _cameraBusy = true;
+    try {
+      await engine.muteLocalVideoStream(next);
+    } catch (_) {
+      if (mounted) setState(() => _cameraOff = !next);
+    } finally {
+      _cameraBusy = false;
+    }
   }
 
   @override
@@ -280,11 +310,21 @@ class _NativeAgoraMeetingScreenState extends State<NativeAgoraMeetingScreen> {
                   ),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    child: Text(
-                      isLocal
-                          ? 'You'
-                          : (_activeSpeakerUid == uid ? 'Speaking' : 'Participant'),
-                      style: const TextStyle(color: Colors.white, fontSize: 11),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          isLocal ? _currentUserName : 'Participant $uid',
+                          style: const TextStyle(color: Colors.white, fontSize: 11),
+                        ),
+                        Text(
+                          isLocal
+                              ? 'You'
+                              : (_activeSpeakerUid == uid ? 'Speaking' : 'Participant'),
+                          style: const TextStyle(color: Colors.white70, fontSize: 10),
+                        ),
+                      ],
                     ),
                   ),
                 ),
@@ -298,12 +338,9 @@ class _NativeAgoraMeetingScreenState extends State<NativeAgoraMeetingScreen> {
 
   Widget _remoteView(int remoteUid) {
     final engine = _engine;
-    if (engine == null) {
+    if (engine == null || _cameraOffUids.contains(remoteUid)) {
       return const Center(
-        child: Text(
-          'Joining meeting...',
-          style: TextStyle(color: Colors.white70),
-        ),
+        child: Icon(Icons.person, color: Colors.white70, size: 42),
       );
     }
 

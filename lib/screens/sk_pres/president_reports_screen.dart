@@ -12,7 +12,8 @@ class PresidentReportsScreen extends StatefulWidget {
   State<PresidentReportsScreen> createState() => _PresidentReportsScreenState();
 }
 
-class _PresidentReportsScreenState extends State<PresidentReportsScreen> {
+class _PresidentReportsScreenState extends State<PresidentReportsScreen>
+    with WidgetsBindingObserver {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   final TextEditingController _searchController = TextEditingController();
   bool _isLoading = false;
@@ -21,14 +22,19 @@ class _PresidentReportsScreenState extends State<PresidentReportsScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _searchController.addListener(() => setState(() {}));
-    if (MobileApiService.syncedData == null) {
-      _refresh();
-    }
+    _refresh();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _refresh();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _searchController.dispose();
     super.dispose();
   }
@@ -236,6 +242,7 @@ class _PresidentReportsScreenState extends State<PresidentReportsScreen> {
   }
 
   Future<void> _refresh() async {
+    if (_isLoading) return;
     setState(() => _isLoading = true);
     try {
       await MobileApiService.sync();

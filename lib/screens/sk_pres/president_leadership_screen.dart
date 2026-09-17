@@ -163,6 +163,7 @@ class _PresidentLeadershipScreenState extends State<PresidentLeadershipScreen> {
         barangay: barangayNames[barangayId] ?? 'Unknown Barangay',
         term: _termLabel(map),
         status: _firstValue(map, ['status'], 'current'),
+        profilePictureUrl: map['profile_pic_url']?.toString(),
       );
     }).where((leader) {
       if (_isLocalOfficial && currentBarangayId.isNotEmpty) {
@@ -471,13 +472,12 @@ class _LeaderCard extends StatelessWidget {
           CircleAvatar(
             backgroundColor:
                 leader.isExecutive ? AppColors.primaryRed : const Color(0xFFFFC107),
-            child: Text(
-              leader.initials,
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
+            backgroundImage: leader.profilePictureUrl?.isNotEmpty == true
+                ? NetworkImage(leader.profilePictureUrl!)
+                : null,
+            child: leader.profilePictureUrl?.isNotEmpty == true
+                ? null
+                : Text(leader.initials, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -567,6 +567,7 @@ class _Leader {
   final String barangay;
   final String term;
   final String status;
+  final String? profilePictureUrl;
 
   const _Leader({
     required this.name,
@@ -575,6 +576,7 @@ class _Leader {
     required this.barangay,
     required this.term,
     required this.status,
+    this.profilePictureUrl,
   });
 
   bool get isExecutive {
