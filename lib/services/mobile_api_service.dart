@@ -9,7 +9,7 @@ class MobileApiService {
   static const String _rememberedEmailKey = 'remembered_email';
   static const String _accessTokenKey = 'access_token';
   static const String _userKey = 'current_user';
-  static const String baseUrl = 'http://192.168.68.108:8000/api/mobile';
+  static const String baseUrl = 'https://sk360lipacity.org/api/mobile';
   static String webUrl(String path) {
     final root = baseUrl.replaceFirst(RegExp(r'/api/mobile$'), '');
     final normalizedPath = path.startsWith('/') ? path : '/$path';

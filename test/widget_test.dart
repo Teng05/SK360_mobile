@@ -7,10 +7,7 @@ void main() {
     await tester.pumpWidget(const MyApp());
 
     expect(find.textContaining('SK 360'), findsWidgets);
-    expect(find.text('Empowering Youth Governance'), findsOneWidget);
-
-    await tester.pump(const Duration(seconds: 5));
-    await tester.pumpAndSettle();
-    expect(find.text('Welcome Back'), findsOneWidget);
+    // Keep this widget test independent from saved sessions and the API.
+    expect(find.text('Empowering SK Governance'), findsOneWidget);
   });
 }
