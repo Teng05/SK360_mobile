@@ -4,6 +4,7 @@ import '../../services/mobile_api_service.dart';
 import '../../ui/app_ui.dart';
 import '../../widgets/president_components.dart';
 
+// Leadership directory with search, filtering, and profile details.
 class PresidentLeadershipScreen extends StatefulWidget {
   const PresidentLeadershipScreen({super.key});
 
@@ -444,7 +445,15 @@ class _Section extends StatelessWidget {
               ...leaders.map(
                 (leader) => Padding(
                   padding: const EdgeInsets.symmetric(vertical: 6),
-                  child: _LeaderCard(leader: leader),
+                  child: _LeaderCard(
+                    leader: leader,
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => _LeaderDetailsPage(leader: leader),
+                      ),
+                    ),
+                  ),
                 ),
               ),
           ],
@@ -456,19 +465,23 @@ class _Section extends StatelessWidget {
 
 class _LeaderCard extends StatelessWidget {
   final _Leader leader;
+  final VoidCallback? onTap;
 
-  const _LeaderCard({required this.leader});
+  const _LeaderCard({required this.leader, this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppColors.softPink,
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Row(
-        children: [
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: AppColors.softPink,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(
+          children: [
           CircleAvatar(
             backgroundColor:
                 leader.isExecutive ? AppColors.primaryRed : const Color(0xFFFFC107),
@@ -501,6 +514,110 @@ class _LeaderCard extends StatelessWidget {
                   style: const TextStyle(color: AppColors.lightText, fontSize: 12),
                 ),
               ],
+            ),
+          ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// Displays the selected official's complete leadership information.
+class _LeaderDetailsPage extends StatelessWidget {
+  final _Leader leader;
+
+  const _LeaderDetailsPage({required this.leader});
+
+  @override
+  Widget build(BuildContext context) {
+    final hasPicture = leader.profilePictureUrl?.isNotEmpty == true;
+    return Scaffold(
+      backgroundColor: AppColors.lightGrayBg,
+      appBar: AppBar(
+        title: const Text('Official profile'),
+        backgroundColor: AppColors.primaryRed,
+        foregroundColor: Colors.white,
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          Center(
+            child: CircleAvatar(
+              radius: 46,
+              backgroundColor: leader.isExecutive
+                  ? AppColors.primaryRed
+                  : const Color(0xFFFFC107),
+              backgroundImage: hasPicture
+                  ? NetworkImage(leader.profilePictureUrl!)
+                  : null,
+              child: hasPicture
+                  ? null
+                  : Text(
+                      leader.initials,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Center(
+            child: Text(
+              leader.name,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: AppColors.darkGray,
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+          _ProfileRow(label: 'Position', value: leader.position),
+          _ProfileRow(label: 'Barangay', value: leader.barangay),
+          _ProfileRow(label: 'Term', value: leader.term),
+          _ProfileRow(label: 'Status', value: _readable(leader.status)),
+        ],
+      ),
+    );
+  }
+}
+
+class _ProfileRow extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _ProfileRow({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.borderPink),
+      ),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 80,
+            child: Text(
+              label,
+              style: const TextStyle(color: AppColors.lightText),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(
+                color: AppColors.darkGray,
+                fontWeight: FontWeight.bold,
+              ),
             ),
           ),
         ],

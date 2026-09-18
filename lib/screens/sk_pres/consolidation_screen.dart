@@ -4,6 +4,7 @@ import '../../services/mobile_api_service.dart';
 import '../../ui/app_ui.dart';
 import '../../widgets/president_components.dart';
 
+// President-only view of submitted reports and budget records by barangay.
 class ConsolidationScreen extends StatefulWidget {
   const ConsolidationScreen({super.key});
 

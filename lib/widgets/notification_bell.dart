@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../services/mobile_api_service.dart';
+import '../screens/shared/meeting_webview_screen.dart';
 import '../ui/app_ui.dart';
 
 class NotificationBell extends StatefulWidget {
@@ -87,6 +88,7 @@ class _NotificationBellState extends State<NotificationBell> {
       builder: (_) => _NotificationSheet(
         notifications: _notifications,
         onMarkRead: _markRead,
+        onOpen: (item) => _openNotification(context, item),
       ),
     );
     if (mounted) setState(() {});
@@ -107,15 +109,34 @@ class _NotificationBellState extends State<NotificationBell> {
       }
     }
   }
+
+  Future<void> _openNotification(
+    BuildContext context,
+    Map<String, dynamic> item,
+  ) async {
+    final id = int.tryParse(
+      '${item['notification_id'] ?? item['id'] ?? ''}',
+    );
+    if (id != null && item['is_read'] != true && item['is_read'] != 1) {
+      await _markRead(id);
+    }
+    if (!context.mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (_) => _NotificationDetails(item: item),
+    );
+  }
 }
 
 class _NotificationSheet extends StatelessWidget {
   final List<Map<String, dynamic>> notifications;
   final ValueChanged<int> onMarkRead;
+  final ValueChanged<Map<String, dynamic>> onOpen;
 
   const _NotificationSheet({
     required this.notifications,
     required this.onMarkRead,
+    required this.onOpen,
   });
 
   @override
@@ -153,6 +174,10 @@ class _NotificationSheet extends StatelessWidget {
                       '${item['notification_id'] ?? item['id'] ?? ''}',
                     );
                     return ListTile(
+                      onTap: () {
+                        Navigator.pop(context);
+                        onOpen(item);
+                      },
                       tileColor: isRead ? Colors.white : AppColors.softPink,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -194,4 +219,73 @@ class _NotificationSheet extends StatelessWidget {
 
   String _body(Map<String, dynamic> item) =>
       '${item['message'] ?? item['body'] ?? item['content'] ?? item['description'] ?? ''}';
+}
+
+class _NotificationDetails extends StatelessWidget {
+  final Map<String, dynamic> item;
+
+  const _NotificationDetails({required this.item});
+
+  @override
+  Widget build(BuildContext context) {
+    final url = item['url']?.toString().trim() ?? '';
+    final timestamp = item['created_at']?.toString() ??
+        item['read_at']?.toString() ??
+        '';
+
+    return AlertDialog(
+      title: Text(_title(item)),
+      content: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (timestamp.isNotEmpty)
+              Text(
+                timestamp,
+                style: const TextStyle(color: AppColors.lightText),
+              ),
+            const SizedBox(height: 12),
+            Text(_body(item)),
+          ],
+        ),
+      ),
+      actions: [
+        if (url.isNotEmpty)
+          TextButton.icon(
+            onPressed: () {
+              final navigator = Navigator.of(context);
+              navigator.pop();
+              navigator.push(
+                MaterialPageRoute(
+                  builder: (_) => MeetingWebViewScreen(
+                    url: _webUrl(url),
+                    title: 'Related information',
+                  ),
+                ),
+              );
+            },
+            icon: const Icon(Icons.open_in_new),
+            label: const Text('Open related record'),
+          ),
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Close'),
+        ),
+      ],
+    );
+  }
+
+  String _webUrl(String value) {
+    if (value.startsWith('http://') || value.startsWith('https://')) {
+      return value;
+    }
+    return MobileApiService.webUrl(value);
+  }
+
+  String _title(Map<String, dynamic> value) =>
+      '${value['title'] ?? value['notification_title'] ?? value['type'] ?? 'Notification'}';
+
+  String _body(Map<String, dynamic> value) =>
+      '${value['message'] ?? value['body'] ?? value['content'] ?? value['description'] ?? 'No details available.'}';
 }

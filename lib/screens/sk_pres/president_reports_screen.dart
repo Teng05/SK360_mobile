@@ -5,6 +5,7 @@ import '../../ui/app_ui.dart';
 import '../../utils/submitted_file_opener.dart';
 import '../../widgets/president_components.dart';
 
+// President reviews submitted accomplishment and budget documents.
 class PresidentReportsScreen extends StatefulWidget {
   const PresidentReportsScreen({super.key});
 
@@ -97,6 +98,10 @@ class _PresidentReportsScreenState extends State<PresidentReportsScreen>
                 ),
               ),
               Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+                child: _BudgetMonitoringCard(stats: stats),
+              ),
+              Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: _Filters(
                   searchController: _searchController,
@@ -126,6 +131,7 @@ class _PresidentReportsScreenState extends State<PresidentReportsScreen>
                     ),
                     child: _ReportCard(
                       report: report,
+                      onOpenDetails: () => _openDetails(report),
                       onOpenFile: () => _openSubmittedFile(report),
                     ),
                   ),
@@ -234,10 +240,15 @@ class _PresidentReportsScreenState extends State<PresidentReportsScreen>
   }
 
   _ReportStats _stats(List<_ReportItem> reports) {
+    final budgetReports = reports.where((item) => item.typeKey == 'budget');
     return _ReportStats(
       total: reports.length,
       accomplishment: reports.where((item) => item.typeKey == 'accomplishment').length,
-      budget: reports.where((item) => item.typeKey == 'budget').length,
+      budget: budgetReports.length,
+      budgetAmount: budgetReports.fold<double>(
+        0,
+        (sum, item) => sum + _moneyValue(item.amount),
+      ),
     );
   }
 
@@ -274,6 +285,18 @@ class _PresidentReportsScreenState extends State<PresidentReportsScreen>
     if (!result.opened) {
       _showMessage(result.message ?? 'Unable to open submitted file.');
     }
+  }
+
+  void _openDetails(_ReportItem report) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => _ReportDetailsPage(
+          report: report,
+          onOpenFile: () => _openSubmittedFile(report),
+        ),
+      ),
+    );
   }
 }
 
@@ -375,23 +398,33 @@ class _SummaryCard extends StatelessWidget {
 
 class _ReportCard extends StatelessWidget {
   final _ReportItem report;
+  final VoidCallback onOpenDetails;
   final VoidCallback onOpenFile;
 
-  const _ReportCard({required this.report, required this.onOpenFile});
+  const _ReportCard({
+    required this.report,
+    required this.onOpenDetails,
+    required this.onOpenFile,
+  });
 
   @override
   Widget build(BuildContext context) {
     final isBudget = report.typeKey == 'budget';
     final statusColor = _statusColor(report.status);
 
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: onOpenDetails,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.borderPink),
-      ),
-      child: Column(
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppColors.borderPink),
+          ),
+          child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
@@ -488,6 +521,127 @@ class _ReportCard extends StatelessWidget {
             ),
           ],
         ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ReportDetailsPage extends StatelessWidget {
+  final _ReportItem report;
+  final VoidCallback onOpenFile;
+
+  const _ReportDetailsPage({
+    required this.report,
+    required this.onOpenFile,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isBudget = report.typeKey == 'budget';
+
+    return Scaffold(
+      backgroundColor: AppColors.lightGrayBg,
+      appBar: AppBar(
+        title: Text(isBudget ? 'Budget Details' : 'Report Details'),
+        backgroundColor: AppColors.primaryRed,
+        foregroundColor: Colors.white,
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Container(
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: AppColors.borderPink),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  report.title,
+                  style: const TextStyle(
+                    fontSize: 21,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.darkGray,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(report.typeLabel, style: const TextStyle(color: AppColors.lightText)),
+                const Divider(height: 28),
+                _DetailLine(label: 'Barangay', value: report.barangay),
+                _DetailLine(label: 'Period', value: report.period),
+                _DetailLine(label: 'Status', value: _readable(report.status)),
+                _DetailLine(label: 'Submitted by', value: report.submitter),
+                _DetailLine(label: 'Role', value: report.role),
+                _DetailLine(label: 'Submission method', value: report.method),
+                _DetailLine(label: 'Submitted at', value: report.submittedAt),
+                if (report.amount.isNotEmpty)
+                  _DetailLine(label: 'Total amount', value: report.amount),
+                if (report.fileUrl.isNotEmpty) ...[
+                  const SizedBox(height: 18),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed: onOpenFile,
+                      icon: const Icon(Icons.picture_as_pdf_outlined),
+                      label: Text('View ${isBudget ? 'Budget' : 'Submitted'} File'),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: AppColors.primaryRed,
+                      ),
+                    ),
+                  ),
+                ] else
+                  const Padding(
+                    padding: EdgeInsets.only(top: 18),
+                    child: Text(
+                      'No attached file is available for this submission.',
+                      style: TextStyle(color: AppColors.lightText),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DetailLine extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _DetailLine({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 118,
+            child: Text(
+              label,
+              style: const TextStyle(color: AppColors.lightText, fontSize: 12),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value.isEmpty ? 'Not provided' : value,
+              style: const TextStyle(
+                color: AppColors.darkGray,
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -555,12 +709,65 @@ class _ReportStats {
   final int total;
   final int accomplishment;
   final int budget;
+  final double budgetAmount;
 
   const _ReportStats({
     required this.total,
     required this.accomplishment,
     required this.budget,
+    required this.budgetAmount,
   });
+}
+
+// Shows budget totals from submitted financial records.
+class _BudgetMonitoringCard extends StatelessWidget {
+  final _ReportStats stats;
+
+  const _BudgetMonitoringCard({required this.stats});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.borderPink),
+      ),
+      child: Row(
+        children: [
+          const CircleAvatar(
+            backgroundColor: Color(0xFFE8F5E9),
+            child: Icon(Icons.account_balance_wallet_outlined, color: Colors.green),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Budget monitoring',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  '${stats.budget} submitted budget record${stats.budget == 1 ? '' : 's'}',
+                  style: const TextStyle(color: AppColors.lightText, fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+          Text(
+            _moneyText(stats.budgetAmount),
+            style: const TextStyle(
+              color: Colors.green,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 InputDecoration _inputDecoration(String hint, IconData icon) {
@@ -671,6 +878,13 @@ String _readable(String value) {
       .join(' ');
 }
 
+double _moneyValue(String value) {
+  final cleaned = value.replaceAll(',', '').replaceAll(RegExp(r'[^0-9.-]'), '');
+  return double.tryParse(cleaned) ?? 0;
+}
+
+String _moneyText(double value) => 'PHP ${value.toStringAsFixed(2)}';
+
 String _absoluteFileUrl(String value) {
   final path = value.trim();
   if (path.isEmpty) return '';
@@ -684,6 +898,9 @@ String _absoluteFileUrl(String value) {
 }
 
 String _documentUrl(Map<String, dynamic> row, String sourceType) {
+  final mobileView = row['mobile_view_url']?.toString().trim() ?? '';
+  if (mobileView.isNotEmpty) return mobileView;
+
   final uploaded = _firstUsablePath(row, [
     'report_file_url',
     'uploaded_file_url',

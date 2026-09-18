@@ -7,6 +7,7 @@ import 'package:permission_handler/permission_handler.dart';
 import '../../services/mobile_api_service.dart';
 import '../../ui/app_ui.dart';
 
+// Native video meeting UI with participant grid and camera controls.
 class NativeAgoraMeetingScreen extends StatefulWidget {
   final int meetingId;
   final String title;

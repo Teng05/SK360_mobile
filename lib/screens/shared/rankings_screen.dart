@@ -4,6 +4,7 @@ import '../../services/mobile_api_service.dart';
 import '../../ui/app_ui.dart';
 import '../../widgets/president_components.dart';
 
+// Shows live rankings and selectable monthly ranking history.
 class RankingsScreen extends StatefulWidget {
   const RankingsScreen({super.key});
 
@@ -40,7 +41,10 @@ class _RankingsScreenState extends State<RankingsScreen> {
         : historyPeriods.isNotEmpty
             ? historyPeriods.first
             : period;
-    final topThree = _historyRankings(history, selectedPeriod).take(3).toList();
+    final historicalTop = _historyRankings(history, selectedPeriod);
+    final topThree = (historicalTop.isEmpty ? rankings : historicalTop)
+        .take(3)
+        .toList();
 
     return Scaffold(
       key: _scaffoldKey,
@@ -137,7 +141,7 @@ class _RankingsScreenState extends State<RankingsScreen> {
     final barangayNames = <String, String>{};
 
     for (final barangay in _rows('barangays')) {
-      final id = _text(barangay['id']);
+      final id = _text(barangay['barangay_id'] ?? barangay['id']);
       if (id.isEmpty) continue;
       barangayNames[id] = _text(barangay['barangay_name']);
     }
@@ -163,7 +167,10 @@ class _RankingsScreenState extends State<RankingsScreen> {
       );
     }).toList();
 
-    items.sort((a, b) => b.points.compareTo(a.points));
+    items.sort((a, b) {
+      final points = b.points.compareTo(a.points);
+      return points == 0 ? a.name.compareTo(b.name) : points;
+    });
 
     return [
       for (var index = 0; index < items.length; index++)
@@ -193,10 +200,13 @@ class _RankingsScreenState extends State<RankingsScreen> {
     final history = _data['ranking_history'];
     if (history is! List) return const [];
 
-    return history
+    final rows = history
         .whereType<Map>()
         .map((entry) => Map<String, dynamic>.from(entry))
         .toList();
+    rows.sort((a, b) => _periodSort(_text(b['period']))
+        .compareTo(_periodSort(_text(a['period']))));
+    return rows;
   }
 
   List<_RankingItem> _historyRankings(
@@ -225,7 +235,16 @@ class _RankingsScreenState extends State<RankingsScreen> {
           );
         })
         .toList();
+    rows.sort((a, b) {
+      final rank = a.rank.compareTo(b.rank);
+      return rank == 0 ? a.name.compareTo(b.name) : rank;
+    });
     return rows;
+  }
+
+  int _periodSort(String period) {
+    final parsed = DateTime.tryParse('$period-01');
+    return parsed?.millisecondsSinceEpoch ?? 0;
   }
 
   List<Map<String, dynamic>> _rows(String key) {
@@ -343,6 +362,7 @@ class _TopRankCard extends StatelessWidget {
   }
 }
 
+// Searchable leaderboard limited to a compact scrollable panel.
 class _LeaderboardPanel extends StatefulWidget {
   final List<_RankingItem> rankings;
 

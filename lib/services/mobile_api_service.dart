@@ -5,10 +5,11 @@ import 'dart:typed_data';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class MobileApiService {
+  // Shared API client and session state for every mobile screen.
   static const String _rememberedEmailKey = 'remembered_email';
   static const String _accessTokenKey = 'access_token';
   static const String _userKey = 'current_user';
-  static const String baseUrl = 'https://sk360lipacity.org/api/mobile';
+  static const String baseUrl = 'http://192.168.68.108:8000/api/mobile';
   static String webUrl(String path) {
     final root = baseUrl.replaceFirst(RegExp(r'/api/mobile$'), '');
     final normalizedPath = path.startsWith('/') ? path : '/$path';
@@ -151,11 +152,7 @@ class MobileApiService {
     return _request(
       'POST',
       '/password/reset/request',
-      body: {
-        'method': method,
-        if (email != null) 'email': email,
-        if (phone != null) 'phone': phone,
-      },
+      body: {'method': method, 'email': ?email, 'phone': ?phone},
       requiresAuth: false,
     );
   }
@@ -181,14 +178,24 @@ class MobileApiService {
     );
   }
 
+  // Create a post from the mobile announcement screen.
   static Future<Map<String, dynamic>> createWallPost({
+    String? title,
     required String content,
     String category = 'update',
+    String audience = 'public',
+    String status = 'published',
   }) async {
     final response = await _request(
       'POST',
       '/wall/posts',
-      body: {'post_content': content, 'post_category': category},
+      body: {
+        if (title != null && title.trim().isNotEmpty) 'title': title.trim(),
+        'post_content': content,
+        'post_category': category,
+        'audience': audience,
+        'status': status,
+      },
     );
 
     await sync();
@@ -203,6 +210,44 @@ class MobileApiService {
     return response;
   }
 
+  // Hide or restore feedback managed by an authorized official.
+  static Future<Map<String, dynamic>> updateFeedback({
+    required int feedbackId,
+    required String status,
+  }) async {
+    final response = await _request(
+      'PATCH',
+      '/feedback/$feedbackId',
+      body: {'status': status},
+    );
+
+    await sync();
+    return response;
+  }
+
+  static Future<Map<String, dynamic>> updateWallPost({
+    required int announcementId,
+    required String title,
+    required String content,
+    required String audience,
+    required String status,
+  }) async {
+    final response = await _request(
+      'PATCH',
+      '/wall/posts/$announcementId',
+      body: {
+        'title': title,
+        'post_content': content,
+        'audience': audience,
+        'status': status,
+      },
+    );
+
+    await sync();
+    return response;
+  }
+
+  // Save profile text and the optional gallery-selected profile picture.
   static Future<Map<String, dynamic>> updateProfile({
     required String firstName,
     required String lastName,
@@ -289,6 +334,7 @@ class MobileApiService {
     }
   }
 
+  // Direct password update endpoint kept for older profile flows.
   static Future<Map<String, dynamic>> updatePassword({
     required String currentPassword,
     required String password,
@@ -305,6 +351,7 @@ class MobileApiService {
     );
   }
 
+  // Request OTP before changing the current user's password.
   static Future<Map<String, dynamic>> requestPasswordChange({
     required String currentPassword,
     required String password,
@@ -321,17 +368,20 @@ class MobileApiService {
     );
   }
 
+  // Confirm the password change using the emailed OTP.
   static Future<Map<String, dynamic>> verifyPasswordChange({
     required String code,
   }) {
     return _request('POST', '/profile/password/verify', body: {'code': code});
   }
 
+  // Create a calendar event and refresh synced data.
   static Future<Map<String, dynamic>> createEvent({
     required String title,
     required String description,
     required DateTime startDateTime,
     DateTime? endDateTime,
+    String? location,
     String eventType = 'event',
     String visibility = 'public',
   }) async {
@@ -341,6 +391,8 @@ class MobileApiService {
       body: {
         'title': title,
         'description': description,
+        if (location != null && location.trim().isNotEmpty)
+          'location': location.trim(),
         'event_type': eventType,
         'start_datetime': startDateTime.toIso8601String(),
         if (endDateTime != null) 'end_datetime': endDateTime.toIso8601String(),
@@ -350,6 +402,36 @@ class MobileApiService {
 
     await sync();
 
+    return response;
+  }
+
+  // Update an existing calendar event.
+  static Future<Map<String, dynamic>> updateEvent({
+    required int eventId,
+    required String title,
+    required String description,
+    required DateTime startDateTime,
+    required DateTime endDateTime,
+    String? location,
+    String eventType = 'event',
+    String visibility = 'public',
+  }) async {
+    final response = await _request(
+      'PATCH',
+      '/events/$eventId',
+      body: {
+        'title': title,
+        'description': description,
+        if (location != null && location.trim().isNotEmpty)
+          'location': location.trim(),
+        'event_type': eventType,
+        'start_datetime': startDateTime.toIso8601String(),
+        'end_datetime': endDateTime.toIso8601String(),
+        'visibility': visibility,
+      },
+    );
+
+    await sync();
     return response;
   }
 
@@ -384,6 +466,30 @@ class MobileApiService {
   static Future<void> endMeeting(int meetingId) async {
     await _request('PATCH', '/meetings/$meetingId/end');
     await sync();
+  }
+
+  // Update meeting details before the meeting starts.
+  static Future<Map<String, dynamic>> updateMeeting({
+    required int meetingId,
+    required String title,
+    String? agenda,
+    required DateTime meetingDate,
+    required TimeOfDayData meetingTime,
+  }) async {
+    final response = await _request(
+      'PATCH',
+      '/meetings/$meetingId',
+      body: {
+        'title': title,
+        'agenda': agenda,
+        'meeting_date': meetingDate.toIso8601String().substring(0, 10),
+        'meeting_time':
+            '${meetingTime.hour.toString().padLeft(2, '0')}:${meetingTime.minute.toString().padLeft(2, '0')}',
+      },
+    );
+
+    await sync();
+    return response;
   }
 
   static Future<Map<String, dynamic>> meetingAgoraToken(int meetingId) {
@@ -439,9 +545,9 @@ class MobileApiService {
         'slot_id': slotId,
         'submission_type': submissionType,
         'report_type': reportType,
-        if (reportingYear != null) 'reporting_year': reportingYear,
-        if (reportingMonth != null) 'reporting_month': reportingMonth,
-        if (reportingQuarter != null) 'reporting_quarter': reportingQuarter,
+        'reporting_year': ?reportingYear,
+        'reporting_month': ?reportingMonth,
+        'reporting_quarter': ?reportingQuarter,
         if (remarks != null && remarks.trim().isNotEmpty)
           'remarks': remarks.trim(),
       },
@@ -585,13 +691,14 @@ class MobileApiService {
       if (year != null) 'year': '$year',
       'period': period,
       if (month != null) 'month': '$month',
-      if (quarter != null) 'quarter': quarter,
+      'quarter': ?quarter,
     };
     final suffix = query.isEmpty ? '' : '?${Uri(queryParameters: query).query}';
 
     return _request('GET', '/consolidation$suffix');
   }
 
+  // Pull the latest records shared by the Laravel web application.
   static Future<Map<String, dynamic>> sync({DateTime? since}) async {
     final query = since == null
         ? ''

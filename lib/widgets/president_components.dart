@@ -17,6 +17,7 @@ enum PresidentNavItem {
 
 enum PresidentHeaderLeading { menu, back, none }
 
+// Shared red header with menu, title, notifications, and optional actions.
 class PresidentHeader extends StatelessWidget {
   final PresidentHeaderLeading leading;
   final VoidCallback? onLeadingTap;
@@ -96,6 +97,7 @@ class PresidentHeader extends StatelessWidget {
   }
 }
 
+// Shared bottom navigation; only the active page uses the yellow state.
 class PresidentBottomNavBar extends StatelessWidget {
   final PresidentNavItem? activeItem;
   final ValueChanged<PresidentNavItem> onItemSelected;
@@ -164,6 +166,7 @@ class _BottomItem {
   const _BottomItem(this.item, this.label, this.icon);
 }
 
+// Role-aware drawer for President, Chairman, and Secretary screens.
 class PresidentSideDrawer extends StatelessWidget {
   const PresidentSideDrawer({super.key});
 
@@ -172,6 +175,7 @@ class PresidentSideDrawer extends StatelessWidget {
     _DrawerItem('Module Management', Icons.tune),
     _DrawerItem('View Reports', Icons.receipt_long),
     _DrawerItem('Announcements', Icons.campaign_outlined),
+    _DrawerItem('Feedback', Icons.feedback_outlined),
     _DrawerItem('Leadership Profiles', Icons.badge_outlined),
     _DrawerItem('Video Meetings', Icons.video_call),
     _DrawerItem('Rankings', Icons.emoji_events_outlined),
@@ -181,6 +185,7 @@ class PresidentSideDrawer extends StatelessWidget {
     _DrawerItem('Reports', Icons.receipt_long),
     _DrawerItem('Budget', Icons.account_balance_wallet_outlined),
     _DrawerItem('Announcements', Icons.campaign_outlined),
+    _DrawerItem('Feedback', Icons.feedback_outlined),
     _DrawerItem('Leadership Profiles', Icons.badge_outlined),
     _DrawerItem('Video Meetings', Icons.video_call),
     _DrawerItem('Rankings', Icons.emoji_events_outlined),
@@ -275,6 +280,7 @@ class PresidentSideDrawer extends StatelessWidget {
       AppRoutes.reports => 'View Reports',
       AppRoutes.budget => 'Budget',
       AppRoutes.announcements => 'Announcements',
+      AppRoutes.feedback => 'Feedback',
       AppRoutes.leadershipProfiles => 'Leadership Profiles',
       AppRoutes.videoMeetings => 'Video Meetings',
       AppRoutes.rankings => 'Rankings',
@@ -304,6 +310,9 @@ class PresidentSideDrawer extends StatelessWidget {
         break;
       case 'Announcements':
         Navigator.pushNamed(context, AppRoutes.announcements);
+        break;
+      case 'Feedback':
+        Navigator.pushNamed(context, AppRoutes.feedback);
         break;
       case 'Leadership Profiles':
         Navigator.pushNamed(context, AppRoutes.leadershipProfiles);

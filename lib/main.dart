@@ -34,6 +34,7 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Keep all named mobile screens in one place for easier navigation checks.
     final routeBuilders = <String, WidgetBuilder>{
       AppRoutes.login: (context) => const LoginScreen(),
       AppRoutes.resetPassword: (context) => const ResetPasswordScreen(),
@@ -51,6 +52,7 @@ class MyApp extends StatelessWidget {
         icon: Icons.campaign_outlined,
         allowCreatePost: true,
       ),
+      AppRoutes.feedback: (context) => const FeedbackManagementPage(),
       AppRoutes.leadershipProfiles: (context) =>
           const PresidentLeadershipScreen(),
       AppRoutes.rankings: (context) => const RankingsScreen(),
@@ -120,7 +122,7 @@ class _AppRouteObserver extends NavigatorObserver {
 class BackNavigationGuard extends StatefulWidget {
   final Widget child;
 
-  const BackNavigationGuard({required this.child});
+  const BackNavigationGuard({super.key, required this.child});
 
   @override
   State<BackNavigationGuard> createState() => _BackNavigationGuardState();
@@ -260,7 +262,7 @@ class _SplashScreenState extends State<SplashScreen>
                   _SplashLogo(),
                   SizedBox(height: 32),
                   Text(
-              'SK 360°',
+                    'SK 360°',
                     style: TextStyle(
                       fontSize: 36,
                       fontWeight: FontWeight.bold,

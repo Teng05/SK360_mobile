@@ -7,6 +7,7 @@ import '../../services/mobile_api_service.dart';
 import '../../ui/app_ui.dart';
 import '../../widgets/president_components.dart';
 
+// Messenger-style room list and conversation screen.
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
 
@@ -365,6 +366,10 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _openRoom(ChatRoom room) async {
+    if (!room.memberIds.contains(_userId)) {
+      _showMessage('You are not a member of this conversation.');
+      return;
+    }
     _pollTimer?.cancel();
     setState(() => _activeRoom = room);
     await _loadMessages(room);
@@ -396,7 +401,15 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _sendMessage() async {
     final room = _activeRoom;
     final text = _messageController.text.trim();
-    if (room == null || text.isEmpty) return;
+    if (room == null) return;
+    if (text.isEmpty) {
+      _showMessage('Type a message before sending.');
+      return;
+    }
+    if (!room.memberIds.contains(_userId)) {
+      _showMessage('You are not a member of this conversation.');
+      return;
+    }
 
     setState(() => _isSending = true);
     try {
@@ -417,6 +430,7 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  // Adds an emoji without replacing the current message text.
   void _insertEmoji(String emoji) {
     final value = _messageController.value;
     final start = value.selection.start < 0

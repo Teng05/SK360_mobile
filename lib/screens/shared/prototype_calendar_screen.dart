@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 
-import '../../routes.dart';
 import '../../services/mobile_api_service.dart';
 import '../../ui/app_ui.dart';
 import '../../widgets/president_components.dart';
 
+// Calendar for events, meetings, and submission deadlines from the web app.
 class PrototypeCalendarScreen extends StatefulWidget {
   const PrototypeCalendarScreen({super.key});
 
@@ -37,6 +37,11 @@ class _PrototypeCalendarScreenState extends State<PrototypeCalendarScreen> {
       ..._rows('meetings'),
       ..._slotEvents(),
     ];
+    final upcomingEvents = events
+        .where((event) => _eventDate(event)?.isAfter(DateTime.now()) ?? false)
+        .toList()
+      ..sort((a, b) => (_eventDate(a) ?? DateTime(2100))
+          .compareTo(_eventDate(b) ?? DateTime(2100)));
     final selectedEvents = events
         .where((event) => _isSameDay(_eventDate(event), _selectedDate))
         .toList();
@@ -122,7 +127,7 @@ class _PrototypeCalendarScreenState extends State<PrototypeCalendarScreen> {
               ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                child: _AllEventsCard(events: events),
+                child: _AllEventsCard(events: upcomingEvents),
               ),
             ],
           ),
@@ -144,7 +149,8 @@ class _PrototypeCalendarScreenState extends State<PrototypeCalendarScreen> {
 
       return {
         ...slot,
-        'title': slot['title'] ?? 'Submission Slot',
+        'title': slot['submission_title'] ?? slot['title'] ?? 'Submission Slot',
+        'description': slot['description'] ?? 'Submission deadline',
         'event_type': type,
         'start_datetime': slot['start_date'],
         'end_datetime': slot['end_date'],
@@ -173,8 +179,15 @@ class _PrototypeCalendarScreenState extends State<PrototypeCalendarScreen> {
 
     final titleController = TextEditingController();
     final descriptionController = TextEditingController();
+    final locationController = TextEditingController();
     DateTime startDate = _selectedDate;
     DateTime endDate = _selectedDate;
+    TimeOfDay startTime = TimeOfDay.now();
+    final now = TimeOfDay.now();
+    TimeOfDay endTime = TimeOfDay(
+      hour: now.hour == 23 ? 23 : now.hour + 1,
+      minute: now.hour == 23 ? 59 : now.minute,
+    );
     String eventType = 'program';
     String visibility = 'public';
     bool isSubmitting = false;
@@ -183,6 +196,8 @@ class _PrototypeCalendarScreenState extends State<PrototypeCalendarScreen> {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
+          insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+          contentPadding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(14),
           ),
@@ -197,6 +212,11 @@ class _PrototypeCalendarScreenState extends State<PrototypeCalendarScreen> {
                   controller: descriptionController,
                   hint: 'Description',
                   maxLines: 2,
+                ),
+                const SizedBox(height: 10),
+                _DialogField(
+                  controller: locationController,
+                  hint: 'Location (optional)',
                 ),
                 const SizedBox(height: 10),
                 Row(
@@ -241,12 +261,43 @@ class _PrototypeCalendarScreenState extends State<PrototypeCalendarScreen> {
                 Row(
                   children: [
                     Expanded(
+                      child: _TimePickerField(
+                        label: 'Start time',
+                        time: startTime,
+                        onTap: () async {
+                          final picked = await _pickTime(startTime);
+                          if (picked != null) {
+                            setDialogState(() => startTime = picked);
+                          }
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _TimePickerField(
+                        label: 'End time',
+                        time: endTime,
+                        onTap: () async {
+                          final picked = await _pickTime(endTime);
+                          if (picked != null) {
+                            setDialogState(() => endTime = picked);
+                          }
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
                       child: DropdownButtonFormField<String>(
                         initialValue: eventType,
+                        isExpanded: true,
                         items: const [
                           DropdownMenuItem(
                             value: 'program',
-                            child: Text('Event/Program'),
+                            child: Text('Event/Program', overflow: TextOverflow.ellipsis),
                           ),
                           DropdownMenuItem(
                             value: 'meeting',
@@ -270,6 +321,7 @@ class _PrototypeCalendarScreenState extends State<PrototypeCalendarScreen> {
                     Expanded(
                       child: DropdownButtonFormField<String>(
                         initialValue: visibility,
+                        isExpanded: true,
                         items: const [
                           DropdownMenuItem(
                             value: 'public',
@@ -278,14 +330,6 @@ class _PrototypeCalendarScreenState extends State<PrototypeCalendarScreen> {
                           DropdownMenuItem(
                             value: 'officials_only',
                             child: Text('Officials'),
-                          ),
-                          DropdownMenuItem(
-                            value: 'chairman_only',
-                            child: Text('Chairmen'),
-                          ),
-                          DropdownMenuItem(
-                            value: 'secretary_only',
-                            child: Text('Secretaries'),
                           ),
                         ],
                         onChanged: (value) => setDialogState(
@@ -318,22 +362,32 @@ class _PrototypeCalendarScreenState extends State<PrototypeCalendarScreen> {
                         return;
                       }
 
+                      final startDateTime = DateTime(
+                        startDate.year,
+                        startDate.month,
+                        startDate.day,
+                        startTime.hour,
+                        startTime.minute,
+                      );
+                      final endDateTime = DateTime(
+                        endDate.year,
+                        endDate.month,
+                        endDate.day,
+                        endTime.hour,
+                        endTime.minute,
+                      );
+                      if (!endDateTime.isAfter(startDateTime)) {
+                        _showMessage('End time must be after start time.');
+                        return;
+                      }
+
                       setDialogState(() => isSubmitting = true);
                       final created = await _createEvent(
                         title: titleController.text.trim(),
                         description: descriptionController.text.trim(),
-                        startDateTime: DateTime(
-                          startDate.year,
-                          startDate.month,
-                          startDate.day,
-                        ),
-                        endDateTime: DateTime(
-                          endDate.year,
-                          endDate.month,
-                          endDate.day,
-                          23,
-                          59,
-                        ),
+                        startDateTime: startDateTime,
+                        endDateTime: endDateTime,
+                        location: locationController.text.trim(),
                         eventType: eventType,
                         visibility: visibility,
                       );
@@ -356,6 +410,7 @@ class _PrototypeCalendarScreenState extends State<PrototypeCalendarScreen> {
 
     titleController.dispose();
     descriptionController.dispose();
+    locationController.dispose();
   }
 
   Future<DateTime?> _pickDate(DateTime initialDate, {DateTime? firstDate}) {
@@ -380,11 +435,29 @@ class _PrototypeCalendarScreenState extends State<PrototypeCalendarScreen> {
     );
   }
 
+  Future<TimeOfDay?> _pickTime(TimeOfDay initialTime) {
+    return showTimePicker(
+      context: context,
+      initialTime: initialTime,
+      builder: (context, child) => Theme(
+        data: Theme.of(context).copyWith(
+          colorScheme: const ColorScheme.light(
+            primary: AppColors.primaryRed,
+            onPrimary: Colors.white,
+            onSurface: AppColors.darkGray,
+          ),
+        ),
+        child: child ?? const SizedBox.shrink(),
+      ),
+    );
+  }
+
   Future<bool> _createEvent({
     required String title,
     required String description,
     required DateTime startDateTime,
     required DateTime endDateTime,
+    required String location,
     required String eventType,
     required String visibility,
   }) async {
@@ -395,6 +468,7 @@ class _PrototypeCalendarScreenState extends State<PrototypeCalendarScreen> {
         description: description,
         startDateTime: startDateTime,
         endDateTime: endDateTime,
+        location: location,
         eventType: eventType,
         visibility: visibility,
       );
@@ -652,6 +726,7 @@ class _EventsForDateCard extends StatelessWidget {
   }
 }
 
+// Displays all upcoming schedules in chronological order.
 class _AllEventsCard extends StatelessWidget {
   final List<Map<String, dynamic>> events;
 
@@ -694,15 +769,28 @@ class _EventTile extends StatelessWidget {
     final date = _eventDate(event);
     final type = _eventTypeLabel(event['event_type']?.toString() ?? 'other');
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFF),
-        borderRadius: BorderRadius.circular(10),
+    return InkWell(
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => _EventDetailsPage(
+            event: event,
+            canEdit: event['event_id'] != null &&
+                MobileApiService.currentUser?['role']?.toString() ==
+                    'sk_president',
+          ),
+        ),
       ),
-      child: Row(
-        children: [
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF8FAFF),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(
+          children: [
           Container(
             width: 36,
             padding: const EdgeInsets.symmetric(vertical: 4),
@@ -752,6 +840,264 @@ class _EventTile extends StatelessWidget {
               ],
             ),
           ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// Event details are editable only for real President-created events.
+class _EventDetailsPage extends StatefulWidget {
+  final Map<String, dynamic> event;
+  final bool canEdit;
+
+  const _EventDetailsPage({required this.event, required this.canEdit});
+
+  @override
+  State<_EventDetailsPage> createState() => _EventDetailsPageState();
+}
+
+class _EventDetailsPageState extends State<_EventDetailsPage> {
+  late final TextEditingController _titleController;
+  late final TextEditingController _descriptionController;
+  late final TextEditingController _locationController;
+  late DateTime _start;
+  late DateTime _end;
+  late String _eventType;
+  late String _visibility;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _titleController = TextEditingController(
+      text: widget.event['title']?.toString() ?? '',
+    );
+    _descriptionController = TextEditingController(
+      text: widget.event['description']?.toString() ?? '',
+    );
+    _locationController = TextEditingController(
+      text: widget.event['location']?.toString() ?? '',
+    );
+    _start = _scheduleStart(widget.event) ?? DateTime.now();
+    _end = _scheduleEnd(widget.event) ?? _start.add(const Duration(hours: 1));
+    _eventType = widget.event['event_type']?.toString() ?? 'other';
+    const types = {'program', 'meeting', 'deadline', 'other'};
+    if (!types.contains(_eventType)) _eventType = 'other';
+    _visibility = widget.event['visibility']?.toString() == 'officials_only'
+        ? 'officials_only'
+        : 'public';
+  }
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _descriptionController.dispose();
+    _locationController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    final id = int.tryParse(widget.event['event_id']?.toString() ?? '');
+    final title = _titleController.text.trim();
+    if (id == null || title.isEmpty) {
+      _message('Event title is required.');
+      return;
+    }
+    if (!_end.isAfter(_start)) {
+      _message('End time must be after start time.');
+      return;
+    }
+
+    setState(() => _saving = true);
+    try {
+      await MobileApiService.updateEvent(
+        eventId: id,
+        title: title,
+        description: _descriptionController.text.trim(),
+        location: _locationController.text.trim(),
+        startDateTime: _start,
+        endDateTime: _end,
+        eventType: _eventType,
+        visibility: _visibility,
+      );
+      if (mounted) {
+        _message('Event updated.');
+        Navigator.pop(context, true);
+      }
+    } on MobileApiException catch (exception) {
+      if (mounted) _message(exception.message);
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _pickDate(bool start) async {
+    final selected = await showDatePicker(
+      context: context,
+      initialDate: start ? _start : _end,
+      firstDate: DateTime(DateTime.now().year - 1),
+      lastDate: DateTime(DateTime.now().year + 5),
+    );
+    if (selected == null) return;
+    setState(() {
+      final current = start ? _start : _end;
+      final value = DateTime(
+        selected.year,
+        selected.month,
+        selected.day,
+        current.hour,
+        current.minute,
+      );
+      if (start) {
+        _start = value;
+      } else {
+        _end = value;
+      }
+    });
+  }
+
+  Future<void> _pickTime(bool start) async {
+    final current = start ? _start : _end;
+    final selected = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(current),
+    );
+    if (selected == null) return;
+    setState(() {
+      final value = DateTime(
+        current.year,
+        current.month,
+        current.day,
+        selected.hour,
+        selected.minute,
+      );
+      if (start) {
+        _start = value;
+      } else {
+        _end = value;
+      }
+    });
+  }
+
+  void _message(String text) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(text), backgroundColor: AppColors.primaryRed),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = widget.canEdit && !_saving;
+    return Scaffold(
+      backgroundColor: AppColors.lightGrayBg,
+      appBar: AppBar(
+        title: const Text('Event details'),
+        backgroundColor: AppColors.primaryRed,
+        foregroundColor: Colors.white,
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          TextField(
+            controller: _titleController,
+            enabled: enabled,
+            decoration: _inputDecoration('Event title'),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _descriptionController,
+            enabled: enabled,
+            maxLines: 4,
+            decoration: _inputDecoration('Description'),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _locationController,
+            enabled: enabled,
+            decoration: _inputDecoration('Location (optional)'),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _DatePickerField(
+                  label: 'Start date',
+                  date: _start,
+                  onTap: enabled ? () => _pickDate(true) : () {},
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _DatePickerField(
+                  label: 'End date',
+                  date: _end,
+                  onTap: enabled ? () => _pickDate(false) : () {},
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _TimePickerField(
+                  label: 'Start time',
+                  time: TimeOfDay.fromDateTime(_start),
+                  onTap: enabled ? () => _pickTime(true) : () {},
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _TimePickerField(
+                  label: 'End time',
+                  time: TimeOfDay.fromDateTime(_end),
+                  onTap: enabled ? () => _pickTime(false) : () {},
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          DropdownButtonFormField<String>(
+            initialValue: _eventType,
+            decoration: _inputDecoration('Event type'),
+            items: const [
+              DropdownMenuItem(value: 'program', child: Text('Event/Program')),
+              DropdownMenuItem(value: 'meeting', child: Text('Meeting')),
+              DropdownMenuItem(value: 'deadline', child: Text('Deadline')),
+              DropdownMenuItem(value: 'other', child: Text('Other')),
+            ],
+            onChanged: enabled
+                ? (value) => setState(() => _eventType = value ?? 'other')
+                : null,
+          ),
+          const SizedBox(height: 12),
+          DropdownButtonFormField<String>(
+            initialValue: _visibility,
+            decoration: _inputDecoration('Visibility'),
+            items: const [
+              DropdownMenuItem(value: 'public', child: Text('Public')),
+              DropdownMenuItem(
+                value: 'officials_only',
+                child: Text('Officials only'),
+              ),
+            ],
+            onChanged: enabled
+                ? (value) => setState(() => _visibility = value ?? 'public')
+                : null,
+          ),
+          if (widget.canEdit) ...[
+            const SizedBox(height: 20),
+            FilledButton(
+              onPressed: _saving ? null : _save,
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.primaryRed,
+                padding: const EdgeInsets.symmetric(vertical: 15),
+              ),
+              child: Text(_saving ? 'Saving...' : 'Save changes'),
+            ),
+          ],
         ],
       ),
     );
@@ -841,6 +1187,41 @@ class _DatePickerField extends StatelessWidget {
   }
 }
 
+class _TimePickerField extends StatelessWidget {
+  final String label;
+  final TimeOfDay time;
+  final VoidCallback onTap;
+
+  const _TimePickerField({
+    required this.label,
+    required this.time,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: InputDecorator(
+        decoration: _inputDecoration(label).copyWith(
+          suffixIcon: const Icon(
+            Icons.access_time,
+            color: AppColors.primaryRed,
+          ),
+        ),
+        child: Text(
+          time.format(context),
+          style: const TextStyle(
+            color: AppColors.darkGray,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 InputDecoration _inputDecoration(String hint) {
   return InputDecoration(
     hintText: hint,
@@ -870,6 +1251,32 @@ DateTime? _eventDate(Map<String, dynamic> event) {
       event['created_at'];
   if (raw == null) return null;
   return DateTime.tryParse(raw.toString());
+}
+
+DateTime? _scheduleStart(Map<String, dynamic> event) {
+  final direct = event['start_datetime']?.toString();
+  if (direct != null && direct.isNotEmpty) return DateTime.tryParse(direct);
+
+  final date = event['meeting_date']?.toString();
+  final time = event['meeting_time']?.toString();
+  if (date != null && date.isNotEmpty) {
+    return DateTime.tryParse('$date ${time ?? '00:00:00'}');
+  }
+
+  return _eventDate(event);
+}
+
+DateTime? _scheduleEnd(Map<String, dynamic> event) {
+  final direct = event['end_datetime']?.toString();
+  if (direct != null && direct.isNotEmpty) return DateTime.tryParse(direct);
+
+  final endDate = event['end_date']?.toString();
+  if (endDate != null && endDate.isNotEmpty) {
+    return DateTime.tryParse('$endDate 23:59:00');
+  }
+
+  final start = _scheduleStart(event);
+  return start?.add(const Duration(hours: 1));
 }
 
 String _dateText(DateTime date) {

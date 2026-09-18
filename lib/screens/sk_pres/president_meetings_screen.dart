@@ -5,6 +5,7 @@ import '../shared/native_agora_meeting_screen.dart';
 import '../../ui/app_ui.dart';
 import '../../widgets/president_components.dart';
 
+// President creates, edits, ends, and joins shared video meetings.
 class PresidentMeetingsScreen extends StatefulWidget {
   const PresidentMeetingsScreen({super.key});
 
@@ -87,6 +88,7 @@ class _PresidentMeetingsScreenState extends State<PresidentMeetingsScreen> {
                     ? 'No upcoming meetings yet. Create one using the button below.'
                     : 'No upcoming meetings yet.',
                 onJoin: _joinMeeting,
+                onEdit: _canCreate ? (meeting) => _showCreateDialog(meeting) : null,
                 onEnd: _canCreate ? _endMeeting : null,
               ),
               _MeetingSection(
@@ -123,18 +125,20 @@ class _PresidentMeetingsScreenState extends State<PresidentMeetingsScreen> {
     return meetings;
   }
 
-  Future<void> _showCreateDialog() async {
-    final titleController = TextEditingController();
-    final agendaController = TextEditingController();
-    DateTime date = DateTime.now();
-    TimeOfDay time = TimeOfDay.now();
+  Future<void> _showCreateDialog([_MeetingItem? meeting]) async {
+    final titleController = TextEditingController(text: meeting?.title ?? '');
+    final agendaController = TextEditingController(text: meeting?.agenda ?? '');
+    DateTime date = meeting?.scheduledAt ?? DateTime.now();
+    TimeOfDay time = meeting == null
+        ? TimeOfDay.now()
+        : TimeOfDay.fromDateTime(meeting.scheduledAt);
 
     await showDialog<void>(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) {
           return AlertDialog(
-            title: const Text('Create Meeting'),
+            title: Text(meeting == null ? 'Create Meeting' : 'Edit Meeting'),
             content: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -201,16 +205,29 @@ class _PresidentMeetingsScreenState extends State<PresidentMeetingsScreen> {
                 ),
                 onPressed: () async {
                   final title = titleController.text.trim();
-                  if (title.isEmpty) return;
+                  if (title.isEmpty) {
+                    _showMessage('Meeting title is required.');
+                    return;
+                  }
                   Navigator.pop(context);
-                  await _createMeeting(
-                    title: title,
-                    agenda: agendaController.text.trim(),
-                    date: date,
-                    time: time,
-                  );
+                  if (meeting == null) {
+                    await _createMeeting(
+                      title: title,
+                      agenda: agendaController.text.trim(),
+                      date: date,
+                      time: time,
+                    );
+                  } else {
+                    await _updateMeeting(
+                      meeting: meeting,
+                      title: title,
+                      agenda: agendaController.text.trim(),
+                      date: date,
+                      time: time,
+                    );
+                  }
                 },
-                child: const Text('Create'),
+                child: Text(meeting == null ? 'Create' : 'Save'),
               ),
             ],
           );
@@ -237,6 +254,31 @@ class _PresidentMeetingsScreenState extends State<PresidentMeetingsScreen> {
         meetingTime: TimeOfDayData(hour: time.hour, minute: time.minute),
       );
       if (mounted) _showMessage('Meeting scheduled successfully.');
+    } on MobileApiException catch (exception) {
+      if (mounted) _showMessage(exception.message);
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  // Saves edited meeting details to the shared web database.
+  Future<void> _updateMeeting({
+    required _MeetingItem meeting,
+    required String title,
+    required String agenda,
+    required DateTime date,
+    required TimeOfDay time,
+  }) async {
+    setState(() => _isLoading = true);
+    try {
+      await MobileApiService.updateMeeting(
+        meetingId: meeting.id,
+        title: title,
+        agenda: agenda.isEmpty ? null : agenda,
+        meetingDate: date,
+        meetingTime: TimeOfDayData(hour: time.hour, minute: time.minute),
+      );
+      if (mounted) _showMessage('Meeting updated successfully.');
     } on MobileApiException catch (exception) {
       if (mounted) _showMessage(exception.message);
     } finally {
@@ -312,12 +354,14 @@ class _MeetingSection extends StatelessWidget {
   final List<_MeetingItem> meetings;
   final String emptyText;
   final ValueChanged<_MeetingItem> onJoin;
+  final ValueChanged<_MeetingItem>? onEdit;
   final ValueChanged<_MeetingItem>? onEnd;
 
   const _MeetingSection({
     required this.title,
     required this.meetings,
     required this.onJoin,
+    this.onEdit,
     this.onEnd,
     this.emptyText = 'No meetings yet.',
   });
@@ -355,9 +399,10 @@ class _MeetingSection extends StatelessWidget {
               ...meetings.map(
                 (meeting) => Padding(
                   padding: const EdgeInsets.only(bottom: 10),
-                  child: _MeetingCard(
+                child: _MeetingCard(
                     meeting: meeting,
                     onJoin: () => onJoin(meeting),
+                    onEdit: onEdit == null ? null : () => onEdit!(meeting),
                     onEnd: onEnd == null ? null : () => onEnd!(meeting),
                   ),
                 ),
@@ -372,9 +417,15 @@ class _MeetingSection extends StatelessWidget {
 class _MeetingCard extends StatelessWidget {
   final _MeetingItem meeting;
   final VoidCallback onJoin;
+  final VoidCallback? onEdit;
   final VoidCallback? onEnd;
 
-  const _MeetingCard({required this.meeting, required this.onJoin, this.onEnd});
+  const _MeetingCard({
+    required this.meeting,
+    required this.onJoin,
+    this.onEdit,
+    this.onEnd,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -465,6 +516,13 @@ class _MeetingCard extends StatelessWidget {
                     ),
                   ),
                   child: const Text('End'),
+                ),
+              ],
+              if (onEdit != null) ...[
+                const SizedBox(width: 8),
+                OutlinedButton(
+                  onPressed: onEdit,
+                  child: const Text('Edit'),
                 ),
               ],
             ],

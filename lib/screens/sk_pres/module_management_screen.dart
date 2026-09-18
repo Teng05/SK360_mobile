@@ -5,6 +5,7 @@ import '../../ui/app_ui.dart';
 import '../../widgets/president_components.dart';
 import '../shared/meeting_webview_screen.dart';
 
+// President manages submission slots and opens barangay submissions.
 class ModuleManagementScreen extends StatefulWidget {
   const ModuleManagementScreen({super.key});
 
@@ -379,6 +380,7 @@ class _ModuleManagementScreenState extends State<ModuleManagementScreen> {
   }
 }
 
+// Lists every barangay submission and opens its submitted file.
 class SubmissionSlotSubmissionsPage extends StatefulWidget {
   final int slotId;
   final String title;

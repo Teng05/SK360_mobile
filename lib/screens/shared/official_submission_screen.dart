@@ -9,6 +9,7 @@ import '../../widgets/president_components.dart';
 
 enum SubmissionKind { report, budget }
 
+// Chairman and Secretary submission screen for report or budget PDFs.
 class OfficialSubmissionScreen extends StatefulWidget {
   final SubmissionKind kind;
 

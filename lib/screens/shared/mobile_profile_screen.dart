@@ -9,6 +9,7 @@ import '../../services/mobile_api_service.dart';
 import '../../ui/app_ui.dart';
 import '../../widgets/president_components.dart';
 
+// Profile entry point for edit profile, password, and logout actions.
 class MobileProfileScreen extends StatefulWidget {
   const MobileProfileScreen({super.key});
 
@@ -161,6 +162,7 @@ class _MobileProfileScreenState extends State<MobileProfileScreen> {
   }
 }
 
+// Profile editor that saves changes to the shared account.
 class _EditProfilePage extends StatefulWidget {
   final String firstName;
   final String lastName;
@@ -362,6 +364,7 @@ class _EditProfilePageState extends State<_EditProfilePage> {
   }
 }
 
+// Password editor with current-password validation and OTP verification.
 class _ChangePasswordPage extends StatefulWidget {
   const _ChangePasswordPage();
 

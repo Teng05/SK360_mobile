@@ -8,6 +8,7 @@ import '../../services/mobile_api_service.dart';
 import '../../ui/app_ui.dart';
 import '../../widgets/president_components.dart';
 
+// Role-based home dashboard shared by President, Chairman, and Secretary.
 class MobileDashboardScreen extends StatefulWidget {
   const MobileDashboardScreen({super.key});
 
