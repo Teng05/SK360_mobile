@@ -24,6 +24,7 @@ class _OfficialSubmissionScreenState extends State<OfficialSubmissionScreen>
   static const MethodChannel _fileChannel = MethodChannel('sk360/file_viewer');
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   bool _isLoading = false;
+  String? _loadError;
 
   String get _submissionType => widget.kind == SubmissionKind.budget
       ? 'budget_report'
@@ -71,6 +72,7 @@ class _OfficialSubmissionScreenState extends State<OfficialSubmissionScreen>
         child: RefreshIndicator(
           onRefresh: _refresh,
           child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.only(bottom: 24),
             children: [
               PresidentHeader(
@@ -79,51 +81,68 @@ class _OfficialSubmissionScreenState extends State<OfficialSubmissionScreen>
                 title: _title,
                 subtitle: _subtitle,
               ),
-              if (_isLoading) const LinearProgressIndicator(minHeight: 3),
+              if (_isLoading) const AppLoadingIndicator(),
+              if (_loadError != null)
+                AppEmptyState(
+                  icon: Icons.cloud_off_outlined,
+                  title: 'Unable to refresh',
+                  message:
+                      'Check your connection and try again. Previously loaded records may still be shown.',
+                  onAction: _refresh,
+                ),
+              AppPageIntro(
+                eyebrow: widget.kind == SubmissionKind.budget
+                    ? 'Budget office'
+                    : 'Council reports',
+                title: _title,
+                subtitle: widget.kind == SubmissionKind.budget
+                    ? 'Upload budget documents to open federation windows.'
+                    : 'Upload accomplishment reports to open federation windows.',
+              ),
               Padding(
-                padding: const EdgeInsets.all(16),
-                child: _Panel(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _SectionTitle(
-                        title: widget.kind == SubmissionKind.budget
-                            ? 'Active Budget Slots'
-                            : 'Active Report Slots',
-                        count: slots.length,
-                      ),
-                      const SizedBox(height: 12),
-                      if (slots.isEmpty)
-                        const _EmptyText('No active slots right now.')
-                      else
-                        ...slots.map(
-                          (slot) => _SlotTile(
-                            slot: slot,
-                            kind: widget.kind,
-                            onSubmit: () => _submit(slot),
-                          ),
+                padding: const EdgeInsets.fromLTRB(16, 22, 16, 0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _SectionTitle(
+                      icon: Icons.inventory_2_outlined,
+                      title: widget.kind == SubmissionKind.budget
+                          ? 'Active Budget Slots'
+                          : 'Active Report Slots',
+                      count: slots.length,
+                    ),
+                    const SizedBox(height: 12),
+                    if (slots.isEmpty)
+                      const _Panel(
+                        child: _EmptyText('No active slots right now.'),
+                      )
+                    else
+                      ...slots.map(
+                        (slot) => _SlotTile(
+                          slot: slot,
+                          kind: widget.kind,
+                          onSubmit: () => _submit(slot),
                         ),
-                    ],
-                  ),
+                      ),
+                  ],
                 ),
               ),
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: _Panel(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _SectionTitle(
-                        title: 'Recent Submissions',
-                        count: submissions.length,
-                      ),
-                      const SizedBox(height: 12),
-                      if (submissions.isEmpty)
-                        const _EmptyText('No submissions yet.')
-                      else
-                        ...submissions.map((row) => _SubmissionTile(row: row)),
-                    ],
-                  ),
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _SectionTitle(
+                      icon: Icons.history_rounded,
+                      title: 'Recent Submissions',
+                      count: submissions.length,
+                    ),
+                    const SizedBox(height: 12),
+                    if (submissions.isEmpty)
+                      const _Panel(child: _EmptyText('No submissions yet.'))
+                    else
+                      ...submissions.map((row) => _SubmissionTile(row: row)),
+                  ],
                 ),
               ),
             ],
@@ -134,7 +153,10 @@ class _OfficialSubmissionScreenState extends State<OfficialSubmissionScreen>
   }
 
   List<Map<String, dynamic>> _activeSlots() {
-    final role = MobileApiService.currentUser?['role']?.toString().trim().toLowerCase();
+    final role = MobileApiService.currentUser?['role']
+        ?.toString()
+        .trim()
+        .toLowerCase();
     final roleLabel = role == 'sk_secretary' ? 'sk secretary' : 'sk chairman';
     final now = DateTime.now();
     final rows = _rows('submission_slots');
@@ -146,7 +168,8 @@ class _OfficialSubmissionScreenState extends State<OfficialSubmissionScreen>
       final start = DateTime.tryParse(slot['start_date']?.toString() ?? '');
       final end = DateTime.tryParse(slot['end_date']?.toString() ?? '');
       final inRole = slotRole == roleLabel || slotRole == 'both';
-      final inDate = (start == null || !now.isBefore(start)) &&
+      final inDate =
+          (start == null || !now.isBefore(start)) &&
           (end == null || !now.isAfter(end.add(const Duration(days: 1))));
       return type == _submissionType && status == 'open' && inRole && inDate;
     }).toList();
@@ -167,7 +190,10 @@ class _OfficialSubmissionScreenState extends State<OfficialSubmissionScreen>
 
   List<Map<String, dynamic>> _rows(String key) {
     final rows = _data[key] as List<dynamic>? ?? [];
-    return rows.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList();
+    return rows
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList();
   }
 
   Future<void> _submit(Map<String, dynamic> slot) async {
@@ -193,7 +219,9 @@ class _OfficialSubmissionScreenState extends State<OfficialSubmissionScreen>
         reportType: draft.reportType,
         reportingYear: now.year,
         reportingMonth: draft.reportType == 'monthly' ? now.month : null,
-        reportingQuarter: draft.reportType == 'quarterly' ? draft.quarter : null,
+        reportingQuarter: draft.reportType == 'quarterly'
+            ? draft.quarter
+            : null,
         remarks: draft.remarks,
       );
       if (mounted) _showMessage('Submission synced.');
@@ -206,7 +234,9 @@ class _OfficialSubmissionScreenState extends State<OfficialSubmissionScreen>
 
   Future<PdfUpload?> _pickPdf() async {
     try {
-      final result = await _fileChannel.invokeMapMethod<String, dynamic>('pickPdf');
+      final result = await _fileChannel.invokeMapMethod<String, dynamic>(
+        'pickPdf',
+      );
       if (result == null) return null;
 
       final name = result['name']?.toString() ?? 'selected.pdf';
@@ -231,11 +261,14 @@ class _OfficialSubmissionScreenState extends State<OfficialSubmissionScreen>
 
   Future<void> _refresh() async {
     if (_isLoading) return;
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _loadError = null;
+    });
     try {
       await MobileApiService.sync();
     } on MobileApiException catch (exception) {
-      if (mounted) _showMessage(exception.message);
+      if (mounted) setState(() => _loadError = exception.message);
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -246,9 +279,9 @@ class _OfficialSubmissionScreenState extends State<OfficialSubmissionScreen>
   }
 
   void _showMessage(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: AppColors.primaryRed),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 }
 
@@ -305,13 +338,20 @@ class _SubmissionFormPageState extends State<_SubmissionFormPage> {
     return Scaffold(
       appBar: AppBar(
         title: Text('Submit ${widget.title}'),
-        backgroundColor: AppColors.primaryRed,
-        foregroundColor: Colors.white,
+        backgroundColor: AppColors.surface,
+        foregroundColor: AppColors.darkGray,
       ),
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
+          const AppSectionHeading(
+            title: 'Submission details',
+            subtitle:
+                'Select a reporting period, attach your PDF, and add any remarks.',
+          ),
+          const SizedBox(height: 24),
           DropdownButtonFormField<String>(
+            isExpanded: true,
             initialValue: _reportType,
             decoration: const InputDecoration(labelText: 'Period type'),
             items: const [
@@ -326,6 +366,7 @@ class _SubmissionFormPageState extends State<_SubmissionFormPage> {
           if (_reportType == 'quarterly') ...[
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(
+              isExpanded: true,
               initialValue: _quarter,
               decoration: const InputDecoration(labelText: 'Quarter'),
               items: const [
@@ -343,7 +384,11 @@ class _SubmissionFormPageState extends State<_SubmissionFormPage> {
           OutlinedButton.icon(
             onPressed: _isPickingFile ? null : _chooseFile,
             icon: const Icon(Icons.picture_as_pdf_outlined),
-            label: Text(_file?.name ?? 'Choose PDF file'),
+            label: Text(
+              _isPickingFile
+                  ? 'Opening files…'
+                  : _file?.name ?? 'Choose PDF file',
+            ),
           ),
           const SizedBox(height: 16),
           TextField(
@@ -355,7 +400,7 @@ class _SubmissionFormPageState extends State<_SubmissionFormPage> {
             ),
           ),
           const SizedBox(height: 24),
-          Row(
+          AppAdaptiveRow(
             children: [
               Expanded(
                 child: OutlinedButton(
@@ -370,7 +415,7 @@ class _SubmissionFormPageState extends State<_SubmissionFormPage> {
                   style: FilledButton.styleFrom(
                     backgroundColor: AppColors.primaryRed,
                   ),
-                  child: const Text('Continue'),
+                  child: const Text('Submit PDF'),
                 ),
               ),
             ],
@@ -418,46 +463,80 @@ class _SlotTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppColors.softPink,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.borderPink),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            slot['title']?.toString() ?? 'Submission slot',
-            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            slot['description']?.toString() ?? 'No description provided.',
-            style: const TextStyle(color: AppColors.lightText, fontSize: 12),
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  '${slot['start_date'] ?? ''} to ${slot['end_date'] ?? ''}',
-                  style: const TextStyle(fontSize: 12),
+    final isBudget = kind == SubmissionKind.budget;
+    final typeColor = isBudget ? AppColors.info : AppColors.primaryRed;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: AppAccentCard(
+        accent: AppColors.primaryRed,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                AppStatusBadge(
+                  label: isBudget ? 'Budget report' : 'Accomplishment report',
+                  color: typeColor,
                 ),
-              ),
-              ElevatedButton(
+                const AppStatusBadge(
+                  label: 'Open',
+                  color: AppColors.success,
+                  dot: true,
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                AppThumbnail(
+                  icon: isBudget
+                      ? Icons.account_balance_wallet_outlined
+                      : Icons.assignment_outlined,
+                  color: typeColor,
+                  size: 54,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        slot['title']?.toString() ?? 'Submission slot',
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w800),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        slot['description']?.toString() ??
+                            'No description provided.',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            AppMeta(
+              icon: Icons.date_range_outlined,
+              label: '${slot['start_date'] ?? ''} to ${slot['end_date'] ?? ''}',
+              color: AppColors.info,
+            ),
+            const SizedBox(height: 14),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
                 onPressed: onSubmit,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primaryRed,
-                  foregroundColor: Colors.white,
-                ),
-                child: Text(kind == SubmissionKind.budget ? 'Submit Budget' : 'Submit Report'),
+                style: AppCardButtonStyle.primary(),
+                icon: const Icon(Icons.upload_file_rounded, size: 18),
+                label: Text(isBudget ? 'Submit Budget' : 'Submit Report'),
               ),
-            ],
-          ),
-        ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -470,30 +549,46 @@ class _SubmissionTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final title = row['title']?.toString() ??
+    final title =
+        row['title']?.toString() ??
         row['report_title']?.toString() ??
         'Submission';
-    final method = row['submission_method']?.toString() ?? 'submitted';
     final status = row['status']?.toString() ?? 'submitted';
-    final date = row['submitted_at']?.toString() ??
+    final date =
+        row['submitted_at']?.toString() ??
         row['created_at']?.toString() ??
         'No date';
-
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      leading: const CircleAvatar(
-        backgroundColor: AppColors.softPink,
-        child: Icon(Icons.description_outlined, color: AppColors.primaryRed),
-      ),
-      title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
-      subtitle: Text('$method | $date', maxLines: 1, overflow: TextOverflow.ellipsis),
-      trailing: Text(
-        status,
-        style: const TextStyle(
-          color: AppColors.primaryRed,
-          fontWeight: FontWeight.w800,
-          fontSize: 12,
-        ),
+    final color = status == 'rejected'
+        ? AppColors.error
+        : status == 'pending'
+        ? AppColors.warning
+        : AppColors.success;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: AppDecorations.surface(),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          AppIconTile(icon: Icons.description_outlined, color: color, size: 19),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: Theme.of(context).textTheme.titleSmall),
+                const SizedBox(height: 4),
+                AppMeta(icon: Icons.schedule_rounded, label: date),
+                const SizedBox(height: 8),
+                AppStatusBadge(
+                  label: status.replaceAll('_', ' '),
+                  color: color,
+                  dot: true,
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -506,36 +601,27 @@ class _Panel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFECEFF3)),
-      ),
-      child: child,
-    );
+    return AppSurface(child: child);
   }
 }
 
 class _SectionTitle extends StatelessWidget {
   final String title;
   final int count;
+  final IconData icon;
 
-  const _SectionTitle({required this.title, required this.count});
+  const _SectionTitle({
+    required this.title,
+    required this.count,
+    required this.icon,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: Text(
-            title.toUpperCase(),
-            style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 12),
-          ),
-        ),
-        Text('$count', style: const TextStyle(color: AppColors.primaryRed)),
-      ],
+    return AppSectionHeading(
+      icon: icon,
+      title: title,
+      action: AppStatusBadge(label: '$count', color: AppColors.primaryRed),
     );
   }
 }
@@ -547,11 +633,12 @@ class _EmptyText extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 18),
-      child: Center(
-        child: Text(text, style: const TextStyle(color: AppColors.lightText)),
-      ),
+    return AppEmptyState(
+      icon: Icons.description_outlined,
+      title: text,
+      message: text.contains('active')
+          ? 'New submission windows will appear here when opened by the federation.'
+          : 'Choose an open submission window above to upload your PDF.',
     );
   }
 }

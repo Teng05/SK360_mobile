@@ -29,7 +29,8 @@ class _ChatScreenState extends State<ChatScreen> {
   ChatRoom? _activeRoom;
 
   Map<String, dynamic> get _user => MobileApiService.currentUser ?? {};
-  String get _userId => _user['user_id']?.toString() ?? _user['id']?.toString() ?? '';
+  String get _userId =>
+      _user['user_id']?.toString() ?? _user['id']?.toString() ?? '';
   String get _userRole => _user['role']?.toString() ?? '';
   String get _userName {
     final name = [
@@ -56,7 +57,8 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final activeName = _activeRoom?.displayNameFor(_userName) ?? 'No conversation';
+    final activeName =
+        _activeRoom?.displayNameFor(_userName) ?? 'No conversation';
     final isThreadOpen = _activeRoom != null;
 
     return Scaffold(
@@ -77,22 +79,27 @@ class _ChatScreenState extends State<ChatScreen> {
               onLeadingTap: isThreadOpen
                   ? _closeRoom
                   : () => _scaffoldKey.currentState?.openDrawer(),
-              title: isThreadOpen ? activeName : 'Chat',
-              subtitle: isThreadOpen ? 'Conversation' : 'Messages',
+              title: isThreadOpen ? activeName : 'Messages',
+              subtitle: isThreadOpen
+                  ? 'Conversation'
+                  : 'Keep your council connected',
               trailing: isThreadOpen
                   ? null
                   : [
                       IconButton(
                         tooltip: 'Create group chat',
                         onPressed: _isLoading ? null : _createGroupChat,
+                        style: IconButton.styleFrom(
+                          backgroundColor: AppColors.softPink,
+                        ),
                         icon: const Icon(
                           Icons.group_add_outlined,
-                          color: Colors.white,
+                          color: AppColors.primaryRed,
                         ),
                       ),
                     ],
             ),
-            if (_isLoading) const LinearProgressIndicator(minHeight: 3),
+            if (_isLoading || _isLoadingUsers) const AppLoadingIndicator(),
             Expanded(
               child: isThreadOpen
                   ? Column(
@@ -100,19 +107,30 @@ class _ChatScreenState extends State<ChatScreen> {
                         Expanded(
                           child: _messages.isEmpty
                               ? const Center(
-                                  child: Text(
-                                    'No messages yet. Send a message to start chatting.',
-                                    textAlign: TextAlign.center,
-                                    style: TextStyle(color: AppColors.lightText),
+                                  child: SingleChildScrollView(
+                                    child: AppEmptyState(
+                                      icon: Icons.chat_bubble_outline_rounded,
+                                      title: 'No messages yet',
+                                      message:
+                                          'Send a message to start chatting.',
+                                    ),
                                   ),
                                 )
                               : ListView.builder(
-                                  padding: const EdgeInsets.all(14),
-                                  itemCount: _messages.length,
-                                  itemBuilder: (context, index) => _MessageBubble(
-                                    message: _messages[index],
-                                    own: _messages[index].senderId == _userId,
+                                  padding: const EdgeInsets.fromLTRB(
+                                    16,
+                                    16,
+                                    16,
+                                    8,
                                   ),
+                                  itemCount: _messages.length,
+                                  itemBuilder: (context, index) =>
+                                      _MessageBubble(
+                                        message: _messages[index],
+                                        own:
+                                            _messages[index].senderId ==
+                                            _userId,
+                                      ),
                                 ),
                         ),
                         _Composer(
@@ -193,174 +211,194 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _createGroupChat() async {
-    final nameController = TextEditingController();
-    final searchController = TextEditingController();
     final selectedIds = <String>{};
     var creating = false;
     String? error;
 
     final room = await showDialog<ChatRoom>(
       context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setDialogState) {
-          final currentId = _userId;
-          final query = searchController.text.trim().toLowerCase();
-          final candidates = _users.where((user) {
-            final id = user['id']?.toString() ?? '';
-            final name = user['name']?.toString() ?? '';
-            final role = user['role']?.toString() ?? '';
-            return id.isNotEmpty && id != currentId &&
-                ('$name $role').toLowerCase().contains(query);
-          }).toList();
+      builder: (dialogContext) => AppDialogForm(
+        builder: (dialogContext, controllers) {
+          final nameController = controllers[0];
+          final searchController = controllers[1];
+          return StatefulBuilder(
+            builder: (context, setDialogState) {
+              final currentId = _userId;
+              final query = searchController.text.trim().toLowerCase();
+              final candidates = _users.where((user) {
+                final id = user['id']?.toString() ?? '';
+                final name = user['name']?.toString() ?? '';
+                final role = user['role']?.toString() ?? '';
+                return id.isNotEmpty &&
+                    id != currentId &&
+                    ('$name $role').toLowerCase().contains(query);
+              }).toList();
 
-          return AlertDialog(
-            title: const Text('Create group chat'),
-            content: SizedBox(
-              width: double.maxFinite,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextField(
-                    controller: nameController,
-                    enabled: !creating,
-                    maxLength: 80,
-                    decoration: const InputDecoration(
-                      labelText: 'Group name',
-                      hintText: 'Enter a group name',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: searchController,
-                    enabled: !creating,
-                    onChanged: (_) => setDialogState(() => error = null),
-                    decoration: const InputDecoration(
-                      labelText: 'Add members',
-                      hintText: 'Search registered accounts',
-                      prefixIcon: Icon(Icons.search),
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  const Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      'You are included automatically. Select at least one member.',
-                      style: TextStyle(fontSize: 12, color: AppColors.lightText),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Flexible(
-                    child: _isLoadingUsers
-                        ? const Center(child: CircularProgressIndicator())
-                        : candidates.isEmpty
-                        ? const Center(
-                            child: Text('No matching registered accounts.'),
-                          )
-                        : ListView.builder(
-                            shrinkWrap: true,
-                            itemCount: candidates.length,
-                            itemBuilder: (context, index) {
-                              final user = candidates[index];
-                              final id = user['id'].toString();
-                              final isSelected = selectedIds.contains(id);
-                              return CheckboxListTile(
-                                value: isSelected,
-                                dense: true,
-                                contentPadding: EdgeInsets.zero,
-                                title: Text(user['name']?.toString() ?? 'User'),
-                                subtitle: Text(user['role']?.toString() ?? ''),
-                                onChanged: creating
-                                    ? null
-                                    : (value) => setDialogState(() {
-                                          if (value == true) {
-                                            selectedIds.add(id);
-                                          } else {
-                                            selectedIds.remove(id);
-                                          }
-                                          error = null;
-                                        }),
-                              );
-                            },
-                          ),
-                  ),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text('${selectedIds.length} selected'),
-                  ),
-                  if (error != null)
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        error!,
-                        style: const TextStyle(color: AppColors.primaryRed),
+              return AlertDialog(
+                title: const Text('Create group chat'),
+                content: SizedBox(
+                  width: double.maxFinite,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      TextField(
+                        controller: nameController,
+                        enabled: !creating,
+                        maxLength: 80,
+                        decoration: const InputDecoration(
+                          labelText: 'Group name',
+                          hintText: 'Enter a group name',
+                          border: OutlineInputBorder(),
+                        ),
                       ),
-                    ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: creating ? null : () => Navigator.pop(dialogContext),
-                child: const Text('Cancel'),
-              ),
-              FilledButton(
-                onPressed: creating
-                    ? null
-                    : () async {
-                        final groupName = nameController.text.trim();
-                        final selected = _users.where(
-                          (user) => selectedIds.contains(user['id']?.toString()),
-                        );
-                        if (groupName.isEmpty || selectedIds.isEmpty) {
-                          setDialogState(() {
-                            error = 'Enter a group name and select at least one member.';
-                          });
-                          return;
-                        }
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: searchController,
+                        enabled: !creating,
+                        onChanged: (_) => setDialogState(() => error = null),
+                        decoration: const InputDecoration(
+                          labelText: 'Add members',
+                          hintText: 'Search registered accounts',
+                          prefixIcon: Icon(Icons.search),
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      const Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          'You are included automatically. Select at least one member.',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: AppColors.lightText,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Flexible(
+                        child: _isLoadingUsers
+                            ? const Center(child: CircularProgressIndicator())
+                            : candidates.isEmpty
+                            ? const Center(
+                                child: Text('No matching registered accounts.'),
+                              )
+                            : ListView.builder(
+                                shrinkWrap: true,
+                                itemCount: candidates.length,
+                                itemBuilder: (context, index) {
+                                  final user = candidates[index];
+                                  final id = user['id'].toString();
+                                  final isSelected = selectedIds.contains(id);
+                                  return CheckboxListTile(
+                                    value: isSelected,
+                                    dense: false,
+                                    contentPadding: EdgeInsets.zero,
+                                    title: Text(
+                                      user['name']?.toString() ?? 'User',
+                                    ),
+                                    subtitle: Text(
+                                      user['role']?.toString() ?? '',
+                                    ),
+                                    onChanged: creating
+                                        ? null
+                                        : (value) => setDialogState(() {
+                                            if (value == true) {
+                                              selectedIds.add(id);
+                                            } else {
+                                              selectedIds.remove(id);
+                                            }
+                                            error = null;
+                                          }),
+                                  );
+                                },
+                              ),
+                      ),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text('${selectedIds.length} selected'),
+                      ),
+                      if (error != null)
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            error!,
+                            style: const TextStyle(color: AppColors.primaryRed),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: creating
+                        ? null
+                        : () => Navigator.pop(dialogContext),
+                    child: const Text('Cancel'),
+                  ),
+                  FilledButton(
+                    onPressed: creating
+                        ? null
+                        : () async {
+                            final groupName = nameController.text.trim();
+                            final selected = _users.where(
+                              (user) =>
+                                  selectedIds.contains(user['id']?.toString()),
+                            );
+                            if (groupName.isEmpty || selectedIds.isEmpty) {
+                              setDialogState(() {
+                                error =
+                                    'Enter a group name and select at least one member.';
+                              });
+                              return;
+                            }
 
-                        setDialogState(() {
-                          creating = true;
-                          error = null;
-                        });
-                        try {
-                          final createdRoom =
-                              await FirebaseChatService.createGroupRoom(
-                            name: groupName,
-                            currentUserId: _userId,
-                            currentUserName: _userName,
-                            members: selected
-                                .map((user) => {
-                                      'id': user['id'].toString(),
-                                      'name': user['name']?.toString() ?? 'User',
-                                    })
-                                .toList(),
-                          );
-                          if (dialogContext.mounted) {
-                            Navigator.pop(dialogContext, createdRoom);
-                          }
-                        } on ChatException catch (exception) {
-                          if (dialogContext.mounted) {
                             setDialogState(() {
-                              creating = false;
-                              error = exception.message;
+                              creating = true;
+                              error = null;
                             });
-                          }
-                        }
-                      },
-                child: Text(creating ? 'Creating...' : 'Create group'),
-              ),
-            ],
+                            try {
+                              final createdRoom =
+                                  await FirebaseChatService.createGroupRoom(
+                                    name: groupName,
+                                    currentUserId: _userId,
+                                    currentUserName: _userName,
+                                    members: selected
+                                        .map(
+                                          (user) => {
+                                            'id': user['id'].toString(),
+                                            'name':
+                                                user['name']?.toString() ??
+                                                'User',
+                                          },
+                                        )
+                                        .toList(),
+                                  );
+                              if (dialogContext.mounted) {
+                                Navigator.pop(dialogContext, createdRoom);
+                              }
+                            } on ChatException catch (exception) {
+                              if (dialogContext.mounted) {
+                                setDialogState(() {
+                                  creating = false;
+                                  error = exception.message;
+                                });
+                              }
+                            }
+                          },
+                    child: Text(creating ? 'Creating...' : 'Create group'),
+                  ),
+                ],
+              );
+            },
           );
         },
       ),
     );
 
-    nameController.dispose();
-    searchController.dispose();
     if (!mounted || room == null) return;
-    setState(() => _rooms = [room, ..._rooms.where((item) => item.id != room.id)]);
+    setState(
+      () => _rooms = [room, ..._rooms.where((item) => item.id != room.id)],
+    );
     await _openRoom(room);
   }
 
@@ -438,9 +476,9 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _showMessage(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: AppColors.primaryRed),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 }
 
@@ -469,34 +507,65 @@ class _RoomRail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      color: Colors.white,
-      child: ListView(
-        padding: const EdgeInsets.all(10),
-        children: [
-          TextField(
-            controller: searchController,
-            onChanged: onSearch,
-            decoration: const InputDecoration(
-              hintText: 'Search',
-              isDense: true,
-              border: OutlineInputBorder(),
+    final searching = searchController.text.trim().isNotEmpty;
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 20, 16, 24),
+      children: [
+        Text('Messages', style: Theme.of(context).textTheme.headlineMedium),
+        const SizedBox(height: 4),
+        Text(
+          'Keep your council connected.',
+          style: Theme.of(
+            context,
+          ).textTheme.bodyMedium?.copyWith(color: AppColors.lightText),
+        ),
+        const SizedBox(height: 16),
+        AppSearchField(
+          controller: searchController,
+          hintText: 'Search people',
+          onChanged: onSearch,
+        ),
+        const SizedBox(height: 24),
+        AppSectionHeading(
+          icon: searching ? Icons.person_search_outlined : Icons.forum_outlined,
+          title: searching ? 'People' : 'Conversations',
+          action: AppStatusBadge(
+            label: '${searching ? users.length : rooms.length}',
+            color: AppColors.info,
+          ),
+        ),
+        const SizedBox(height: 12),
+        if (searching && users.isEmpty)
+          const AppEmptyState(
+            icon: Icons.person_search_outlined,
+            title: 'No matching people',
+            message: 'Try another name.',
+          ),
+        if (!searching && rooms.isEmpty)
+          const AppEmptyState(
+            icon: Icons.chat_bubble_outline,
+            title: 'Start a conversation',
+            message:
+                'Search for an SK official above, or use the group button to bring your council together.',
+          ),
+        if (searching)
+          ...users.map(
+            (user) => _UserTile(user: user, onTap: () => onUserTap(user)),
+          )
+        else
+          ...rooms.map(
+            (room) => _RoomTile(
+              name: room.displayNameFor(currentUserName),
+              subtitle: room.type == 'group'
+                  ? 'Group · ${room.memberIds.length} members'
+                  : 'Direct message',
+              isGroup: room.type == 'group',
+              profilePictureUrl: _roomPhoto(room),
+              active: room.id == activeRoom?.id,
+              onTap: () => onRoomTap(room),
             ),
           ),
-          const SizedBox(height: 10),
-          if (searchController.text.trim().isNotEmpty)
-            ...users.map((user) => _UserTile(user: user, onTap: () => onUserTap(user)))
-          else
-            ...rooms.map(
-              (room) => _RoomTile(
-                name: room.displayNameFor(currentUserName),
-                profilePictureUrl: _roomPhoto(room),
-                active: room.id == activeRoom?.id,
-                onTap: () => onRoomTap(room),
-              ),
-            ),
-        ],
-      ),
+      ],
     );
   }
 
@@ -516,31 +585,63 @@ class _RoomRail extends StatelessWidget {
 
 class _RoomTile extends StatelessWidget {
   final String name;
+  final String subtitle;
+  final bool isGroup;
   final String? profilePictureUrl;
   final bool active;
   final VoidCallback onTap;
 
-  const _RoomTile({required this.name, required this.active, required this.onTap, this.profilePictureUrl});
+  const _RoomTile({
+    required this.name,
+    required this.subtitle,
+    required this.isGroup,
+    required this.active,
+    required this.onTap,
+    this.profilePictureUrl,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return ListTile(
-      dense: true,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 6),
-      selected: active,
-      selectedTileColor: AppColors.softPink,
-      leading: CircleAvatar(
-        radius: 16,
-        backgroundColor: AppColors.primaryRed,
-        backgroundImage: profilePictureUrl?.isNotEmpty == true
-            ? NetworkImage(profilePictureUrl!)
-            : null,
-        child: profilePictureUrl?.isNotEmpty == true
-            ? null
-            : Text(_initials(name), style: const TextStyle(color: Colors.white, fontSize: 11)),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: AppAccentCard(
+        accent: isGroup ? AppColors.info : AppColors.primaryRed,
+        color: active ? AppColors.softPink : AppColors.surface,
+        padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
+        onTap: onTap,
+        child: Row(
+          children: [
+            _Avatar(name: name, photoUrl: profilePictureUrl, isGroup: isGroup),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
+                  const SizedBox(height: 3),
+                  AppMeta(
+                    icon: isGroup
+                        ? Icons.groups_2_outlined
+                        : Icons.person_outline_rounded,
+                    label: subtitle,
+                    color: isGroup ? AppColors.info : AppColors.primaryRed,
+                  ),
+                ],
+              ),
+            ),
+            const Icon(
+              Icons.chevron_right_rounded,
+              size: 22,
+              color: AppColors.lightText,
+            ),
+          ],
+        ),
       ),
-      title: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis),
-      onTap: onTap,
     );
   }
 }
@@ -554,22 +655,94 @@ class _UserTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final name = user['name']?.toString() ?? 'User';
-    return ListTile(
-      dense: true,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 6),
-      leading: CircleAvatar(
-        radius: 16,
-        backgroundColor: const Color(0xFF22C55E),
-        backgroundImage: user['profile_pic_url']?.toString().isNotEmpty == true
-            ? NetworkImage(user['profile_pic_url'].toString())
-            : null,
-        child: user['profile_pic_url']?.toString().isNotEmpty == true
-            ? null
-            : Text(_initials(name), style: const TextStyle(color: Colors.white, fontSize: 11)),
+    final role = user['role']?.toString() ?? '';
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: DecoratedBox(
+        decoration: AppDecorations.surface(),
+        child: Material(
+          color: Colors.transparent,
+          borderRadius: BorderRadius.circular(AppSpace.radius),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
+              child: Row(
+                children: [
+                  _Avatar(
+                    name: name,
+                    photoUrl: user['profile_pic_url']?.toString(),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.titleSmall,
+                        ),
+                        if (role.isNotEmpty) ...[
+                          const SizedBox(height: 3),
+                          Text(
+                            role,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.info,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  const AppIconTile(
+                    icon: Icons.chat_bubble_outline_rounded,
+                    size: 18,
+                    circle: true,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
       ),
-      title: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis),
-      subtitle: Text(user['role']?.toString() ?? '', maxLines: 1, overflow: TextOverflow.ellipsis),
-      onTap: onTap,
+    );
+  }
+}
+
+class _Avatar extends StatelessWidget {
+  final String name;
+  final String? photoUrl;
+  final bool isGroup;
+
+  const _Avatar({required this.name, this.photoUrl, this.isGroup = false});
+
+  @override
+  Widget build(BuildContext context) {
+    final hasPhoto = photoUrl?.isNotEmpty == true;
+    final color = isGroup ? AppColors.info : AppColors.primaryRed;
+    return CircleAvatar(
+      radius: 24,
+      backgroundColor: color.withValues(alpha: .1),
+      backgroundImage: hasPhoto ? NetworkImage(photoUrl!) : null,
+      child: hasPhoto
+          ? null
+          : isGroup
+          ? Icon(Icons.groups_2_rounded, color: color, size: 24)
+          : Text(
+              _initials(name),
+              style: TextStyle(
+                color: color,
+                fontSize: 15,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
     );
   }
 }
@@ -585,29 +758,43 @@ class _MessageBubble extends StatelessWidget {
     return Align(
       alignment: own ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
-        constraints: const BoxConstraints(maxWidth: 250),
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.sizeOf(context).width * .78,
+        ),
         margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
         decoration: BoxDecoration(
-          color: own ? AppColors.primaryRed : Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: own ? null : Border.all(color: const Color(0xFFECEFF3)),
+          color: own ? AppColors.primaryRed : AppColors.field,
+          borderRadius: BorderRadius.only(
+            topLeft: const Radius.circular(20),
+            topRight: const Radius.circular(20),
+            bottomLeft: Radius.circular(own ? 20 : 6),
+            bottomRight: Radius.circular(own ? 6 : 20),
+          ),
         ),
         child: Column(
-          crossAxisAlignment: own ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+          crossAxisAlignment: own
+              ? CrossAxisAlignment.end
+              : CrossAxisAlignment.start,
           children: [
             Text(
               message.senderName,
               style: TextStyle(
-                color: own ? Colors.white70 : AppColors.lightText,
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
+                color: own
+                    ? Colors.white.withValues(alpha: .8)
+                    : AppColors.info,
+                fontSize: 12.5,
+                fontWeight: FontWeight.w800,
               ),
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 3),
             Text(
               message.text,
-              style: TextStyle(color: own ? Colors.white : AppColors.darkGray),
+              style: TextStyle(
+                color: own ? Colors.white : AppColors.darkGray,
+                fontSize: 14.5,
+                height: 1.4,
+              ),
             ),
           ],
         ),
@@ -636,8 +823,11 @@ class _Composer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(12),
-      color: Colors.white,
+      padding: const EdgeInsets.fromLTRB(10, 10, 12, 10),
+      decoration: const BoxDecoration(
+        color: AppColors.surface,
+        border: Border(top: BorderSide(color: AppColors.border)),
+      ),
       child: Column(
         children: [
           if (showEmojiPicker)
@@ -645,10 +835,7 @@ class _Composer extends StatelessWidget {
               width: double.infinity,
               margin: const EdgeInsets.only(bottom: 8),
               padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: AppColors.lightGrayBg,
-                borderRadius: BorderRadius.circular(12),
-              ),
+              decoration: AppDecorations.inset(radius: 16),
               child: Wrap(
                 spacing: 8,
                 runSpacing: 8,
@@ -669,10 +856,13 @@ class _Composer extends StatelessWidget {
                   ])
                     InkWell(
                       onTap: enabled ? () => onEmojiSelected(emoji) : null,
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(10),
                       child: Padding(
-                        padding: const EdgeInsets.all(4),
-                        child: Text(emoji, style: const TextStyle(fontSize: 24)),
+                        padding: const EdgeInsets.all(10),
+                        child: Text(
+                          emoji,
+                          style: const TextStyle(fontSize: 24),
+                        ),
                       ),
                     ),
                 ],
@@ -681,6 +871,7 @@ class _Composer extends StatelessWidget {
           Row(
             children: [
               IconButton(
+                tooltip: 'Choose emoji',
                 onPressed: enabled ? onToggleEmojiPicker : null,
                 color: AppColors.primaryRed,
                 icon: Icon(
@@ -693,18 +884,43 @@ class _Composer extends StatelessWidget {
                 child: TextField(
                   controller: controller,
                   enabled: enabled,
-                  decoration: const InputDecoration(
+                  minLines: 1,
+                  maxLines: 4,
+                  decoration: InputDecoration(
                     hintText: 'Type your message...',
-                    border: OutlineInputBorder(),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(24),
+                      borderSide: const BorderSide(color: AppColors.border),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(24),
+                      borderSide: const BorderSide(color: AppColors.border),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(24),
+                      borderSide: const BorderSide(
+                        color: AppColors.primaryRed,
+                        width: 1.5,
+                      ),
+                    ),
                   ),
                   onSubmitted: (_) => onSend(),
                 ),
               ),
               const SizedBox(width: 8),
               IconButton.filled(
-                style: IconButton.styleFrom(backgroundColor: AppColors.primaryRed),
+                style: IconButton.styleFrom(
+                  backgroundColor: AppColors.primaryRed,
+                  foregroundColor: Colors.white,
+                  fixedSize: const Size(46, 46),
+                ),
+                tooltip: 'Send message',
                 onPressed: enabled ? onSend : null,
-                icon: const Icon(Icons.send),
+                icon: const Icon(Icons.send_rounded, size: 21),
               ),
             ],
           ),

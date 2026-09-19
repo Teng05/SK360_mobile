@@ -35,164 +35,84 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF2F6FB),
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 450),
-              child: _codeSent ? _buildVerifyView() : _buildRequestView(),
+    return AppAuthLayout(
+      title: _codeSent ? 'Set a new password' : 'Forgot your password?',
+      subtitle: _codeSent
+          ? 'Enter the code sent to $_target, then choose your new password.'
+          : 'Choose where to receive your reset code.',
+      step: _codeSent
+          ? 'STEP 2 OF 2 · RESET PASSWORD'
+          : 'STEP 1 OF 2 · RECOVERY',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (!_codeSent) ...[
+            _MethodToggle(
+              method: _method,
+              onChanged: (value) => setState(() => _method = value),
             ),
-          ),
-        ),
+            const SizedBox(height: 24),
+            AppInputField(
+              label: _method == 'email' ? 'Email address' : 'Phone number',
+              hintText: _method == 'email'
+                  ? 'you@example.com'
+                  : '+63 9XX XXX XXXX',
+              controller: _method == 'email'
+                  ? _emailController
+                  : _phoneController,
+              keyboardType: _method == 'email'
+                  ? TextInputType.emailAddress
+                  : TextInputType.phone,
+            ),
+            const SizedBox(height: 24),
+            AppButton(
+              label: _isLoading ? 'Sending code…' : 'Send reset code',
+              isLoading: _isLoading,
+              onPressed: _sendCode,
+            ),
+          ] else ...[
+            AppInputField(
+              label: 'Verification code',
+              hintText: '6-digit code',
+              controller: _codeController,
+              keyboardType: TextInputType.number,
+              maxLength: 6,
+              autofillHints: const [AutofillHints.oneTimeCode],
+              textInputAction: TextInputAction.next,
+            ),
+            const SizedBox(height: 20),
+            AppInputField(
+              label: 'New password',
+              hintText: 'Create a password',
+              controller: _passwordController,
+              isPassword: true,
+              textInputAction: TextInputAction.next,
+            ),
+            const SizedBox(height: 20),
+            AppInputField(
+              label: 'Confirm password',
+              hintText: 'Re-enter your password',
+              controller: _confirmController,
+              isPassword: true,
+            ),
+            const SizedBox(height: 24),
+            AppButton(
+              label: _isLoading ? 'Resetting password…' : 'Reset password',
+              isLoading: _isLoading,
+              onPressed: _resetPassword,
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'Your code expires in 15 minutes.',
+              style: TextStyle(color: AppColors.lightText, fontSize: 13),
+            ),
+            TextButton(
+              onPressed: _isLoading ? null : _resetFlow,
+              child: const Text('Use a different method'),
+            ),
+          ],
+        ],
       ),
-    );
-  }
-
-  Widget _buildRequestView() {
-    return Column(
-      children: [
-        _LogoCircle(
-          backgroundColor: Colors.white,
-          child: const AppLogo(width: 64, height: 64),
-        ),
-        const Text(
-          'Reset Your Password',
-          textAlign: TextAlign.center,
-          style: _titleStyle,
-        ),
-        const SizedBox(height: 8),
-        const Text(
-          'Choose your preferred reset method',
-          textAlign: TextAlign.center,
-          style: _subTextStyle,
-        ),
-        const SizedBox(height: 25),
-        _Card(
-          child: Column(
-            children: [
-              _MethodToggle(
-                method: _method,
-                onChanged: (value) => setState(() => _method = value),
-              ),
-              const SizedBox(height: 25),
-              if (_method == 'email')
-                _LabeledField(
-                  label: 'Email Address',
-                  iconText: '@',
-                  controller: _emailController,
-                  hintText: 'sk360@gmail.com',
-                  keyboardType: TextInputType.emailAddress,
-                )
-              else
-                _LabeledField(
-                  label: 'Phone Number',
-                  iconText: 'P',
-                  controller: _phoneController,
-                  hintText: '+639123456789',
-                  keyboardType: TextInputType.phone,
-                ),
-              const SizedBox(height: 20),
-              _PrimaryButton(
-                label: _isLoading ? 'Sending...' : 'Send Reset Code',
-                onPressed: _isLoading ? null : _sendCode,
-              ),
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text(
-                  'Back to Login',
-                  style: TextStyle(color: Color(0xFF6B7280)),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildVerifyView() {
-    final isPhone = _method == 'phone';
-
-    return Column(
-      children: [
-        _LogoCircle(
-          backgroundColor: const Color(0xFFFFCA28),
-          child: const AppLogo(width: 64, height: 64),
-        ),
-        const Text(
-          'Reset Code Sent!',
-          textAlign: TextAlign.center,
-          style: _titleStyle,
-        ),
-        const SizedBox(height: 8),
-        Text(
-          isPhone
-              ? 'Check your phone for password reset instructions'
-              : 'Check your email for password reset instructions',
-          textAlign: TextAlign.center,
-          style: _subTextStyle,
-        ),
-        const SizedBox(height: 25),
-        _Card(
-          child: Column(
-            children: [
-              _InfoBadge(label: isPhone ? 'Phone' : 'Email', value: _target),
-              const SizedBox(height: 16),
-              _LabeledField(
-                label: isPhone ? 'SMS Code' : 'Email Code',
-                iconText: '#',
-                controller: _codeController,
-                hintText: '6-digit code',
-                keyboardType: TextInputType.number,
-                maxLength: 6,
-              ),
-              const SizedBox(height: 16),
-              _LabeledField(
-                label: 'New Password',
-                iconText: '*',
-                controller: _passwordController,
-                hintText: 'New password',
-                obscureText: true,
-              ),
-              const SizedBox(height: 16),
-              _LabeledField(
-                label: 'Confirm Password',
-                iconText: '*',
-                controller: _confirmController,
-                hintText: 'Confirm password',
-                obscureText: true,
-              ),
-              const SizedBox(height: 20),
-              _PrimaryButton(
-                label: _isLoading ? 'Resetting...' : 'Reset Password',
-                onPressed: _isLoading ? null : _resetPassword,
-              ),
-              const SizedBox(height: 12),
-              const Text(
-                'Code expires in 15 minutes',
-                style: TextStyle(
-                  color: AppColors.primaryRed,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              TextButton(
-                onPressed: _isLoading ? null : _resetFlow,
-                child: const Text(
-                  'Try Different Method',
-                  style: TextStyle(
-                    color: AppColors.primaryRed,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
     );
   }
 
@@ -201,7 +121,9 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
     final phone = _phoneController.text.trim();
     final target = _method == 'email' ? email : phone;
     if (target.isEmpty) {
-      _showMessage(_method == 'email' ? 'Enter your email.' : 'Enter your phone number.');
+      _showMessage(
+        _method == 'email' ? 'Enter your email.' : 'Enter your phone number.',
+      );
       return;
     }
 
@@ -245,11 +167,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
       );
       if (!mounted) return;
       _showMessage(response['message']?.toString() ?? 'Password reset.');
-      Navigator.pushNamedAndRemoveUntil(
-        context,
-        AppRoutes.login,
-        (_) => false,
-      );
+      Navigator.pushNamedAndRemoveUntil(context, AppRoutes.login, (_) => false);
     } on MobileApiException catch (exception) {
       if (mounted) _showMessage(exception.message);
     } finally {
@@ -268,75 +186,9 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
   }
 
   void _showMessage(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: AppColors.primaryRed),
-    );
-  }
-}
-
-const _titleStyle = TextStyle(
-  color: AppColors.primaryRed,
-  fontSize: 28,
-  fontWeight: FontWeight.w800,
-);
-
-const _subTextStyle = TextStyle(
-  color: Color(0xFF6B7280),
-  fontSize: 14,
-);
-
-class _Card extends StatelessWidget {
-  final Widget child;
-
-  const _Card({required this.child});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(32),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(30),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.10),
-            blurRadius: 40,
-            offset: const Offset(0, 20),
-          ),
-        ],
-      ),
-      child: child,
-    );
-  }
-}
-
-class _LogoCircle extends StatelessWidget {
-  final Color backgroundColor;
-  final Widget child;
-
-  const _LogoCircle({required this.backgroundColor, required this.child});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 80,
-      height: 80,
-      margin: const EdgeInsets.only(bottom: 20),
-      decoration: BoxDecoration(
-        color: backgroundColor,
-        shape: BoxShape.circle,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.08),
-            blurRadius: 24,
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
-      alignment: Alignment.center,
-      child: child,
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 }
 
@@ -351,7 +203,7 @@ class _MethodToggle extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(6),
       decoration: BoxDecoration(
-        color: const Color(0xFFFCE4E4),
+        color: AppColors.field,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
@@ -391,148 +243,10 @@ class _ToggleButton extends StatelessWidget {
         style: TextButton.styleFrom(
           backgroundColor: active ? AppColors.primaryRed : Colors.transparent,
           foregroundColor: active ? Colors.white : AppColors.primaryRed,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-          padding: const EdgeInsets.symmetric(vertical: 10),
-        ),
-        child: Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
-      ),
-    );
-  }
-}
-
-class _LabeledField extends StatelessWidget {
-  final String label;
-  final String iconText;
-  final TextEditingController controller;
-  final String hintText;
-  final TextInputType keyboardType;
-  final bool obscureText;
-  final int? maxLength;
-
-  const _LabeledField({
-    required this.label,
-    required this.iconText,
-    required this.controller,
-    required this.hintText,
-    this.keyboardType = TextInputType.text,
-    this.obscureText = false,
-    this.maxLength,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Container(
-              width: 28,
-              height: 28,
-              decoration: const BoxDecoration(
-                color: Color(0xFFFCE4E4),
-                shape: BoxShape.circle,
-              ),
-              alignment: Alignment.center,
-              child: Text(
-                iconText,
-                style: const TextStyle(
-                  color: AppColors.primaryRed,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              label,
-              style: const TextStyle(
-                color: AppColors.darkGray,
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 10),
-        TextField(
-          controller: controller,
-          keyboardType: keyboardType,
-          obscureText: obscureText,
-          maxLength: maxLength,
-          decoration: InputDecoration(
-            counterText: '',
-            hintText: hintText,
-            filled: true,
-            fillColor: const Color(0xFFF1F3F5),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide: BorderSide.none,
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide: BorderSide(
-                color: AppColors.primaryRed.withValues(alpha: 0.35),
-                width: 2,
-              ),
-            ),
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 15,
-              vertical: 13,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _InfoBadge extends StatelessWidget {
-  final String label;
-  final String value;
-
-  const _InfoBadge({required this.label, required this.value});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 8),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFEFAD4),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0xFFE9D9AB)),
-      ),
-      child: Text(
-        '$label  $value',
-        textAlign: TextAlign.center,
-        style: const TextStyle(
-          color: Color(0xFF8F763F),
-          fontSize: 13,
-          fontWeight: FontWeight.w700,
-        ),
-      ),
-    );
-  }
-}
-
-class _PrimaryButton extends StatelessWidget {
-  final String label;
-  final VoidCallback? onPressed;
-
-  const _PrimaryButton({required this.label, required this.onPressed});
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: double.infinity,
-      height: 48,
-      child: ElevatedButton(
-        onPressed: onPressed,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: AppColors.primaryRed,
-          foregroundColor: Colors.white,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(12),
           ),
+          padding: const EdgeInsets.symmetric(vertical: 10),
         ),
         child: Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
       ),

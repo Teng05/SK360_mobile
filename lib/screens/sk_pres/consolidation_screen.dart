@@ -14,6 +14,7 @@ class ConsolidationScreen extends StatefulWidget {
 class _ConsolidationScreenState extends State<ConsolidationScreen> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   bool _isLoading = false;
+  String? _loadError;
   int _year = DateTime.now().year;
   int _month = DateTime.now().month;
   String _period = 'all';
@@ -42,6 +43,7 @@ class _ConsolidationScreenState extends State<ConsolidationScreen> {
         child: RefreshIndicator(
           onRefresh: _loadConsolidation,
           child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.only(bottom: 24),
             children: [
               PresidentHeader(
@@ -50,9 +52,23 @@ class _ConsolidationScreenState extends State<ConsolidationScreen> {
                 title: 'Consolidation',
                 subtitle: 'Barangay submissions',
               ),
-              if (_isLoading) const LinearProgressIndicator(minHeight: 3),
+              if (_isLoading) const AppLoadingIndicator(),
+              if (_loadError != null)
+                AppEmptyState(
+                  icon: Icons.cloud_off_outlined,
+                  title: 'Unable to refresh',
+                  message: 'Check your connection and try again.',
+                  onAction: _loadConsolidation,
+                ),
+              const AppPageIntro(
+                eyebrow: 'Federation overview',
+                title: 'Consolidation',
+                subtitle:
+                    'Track which barangays have submitted for each reporting '
+                    'period.',
+              ),
               Padding(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
                 child: _Filters(
                   year: _year,
                   years: _years,
@@ -72,28 +88,51 @@ class _ConsolidationScreenState extends State<ConsolidationScreen> {
               ),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Row(
+                child: AppMetricGrid(
+                  columns: 3,
                   children: [
-                    Expanded(child: _Stat(label: 'Total', value: '${_stats['total_barangays'] ?? 0}')),
-                    const SizedBox(width: 8),
-                    Expanded(child: _Stat(label: 'Submitted', value: '${_stats['submitted'] ?? 0}', color: Colors.green)),
-                    const SizedBox(width: 8),
-                    Expanded(child: _Stat(label: 'Pending', value: '${_stats['pending'] ?? 0}', color: const Color(0xFFFFC107))),
+                    _Stat(
+                      label: 'Total',
+                      value: '${_stats['total_barangays'] ?? 0}',
+                      icon: Icons.location_city_outlined,
+                    ),
+                    _Stat(
+                      label: 'Submitted',
+                      value: '${_stats['submitted'] ?? 0}',
+                      icon: Icons.task_alt_rounded,
+                      color: AppColors.success,
+                    ),
+                    _Stat(
+                      label: 'Pending',
+                      value: '${_stats['pending'] ?? 0}',
+                      icon: Icons.hourglass_empty_rounded,
+                      color: AppColors.warning,
+                    ),
                   ],
                 ),
               ),
-              const SizedBox(height: 12),
-              if (_submissions.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.all(24),
-                  child: Center(
-                    child: Text('No barangay records found.', style: TextStyle(color: AppColors.lightText)),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 24, 16, 4),
+                child: AppSectionHeading(
+                  icon: Icons.folder_copy_outlined,
+                  title: 'Barangay submissions',
+                  action: AppStatusBadge(
+                    label: '${_submissions.length}',
+                    color: AppColors.primaryRed,
                   ),
+                ),
+              ),
+              if (_submissions.isEmpty && !_isLoading && _loadError == null)
+                const AppEmptyState(
+                  icon: Icons.folder_copy_outlined,
+                  title: 'No records for this period',
+                  message:
+                      'Choose another reporting period or pull down to refresh.',
                 )
               else
                 ..._submissions.map(
                   (row) => Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
                     child: _BarangaySubmissionCard(row: row),
                   ),
                 ),
@@ -105,7 +144,10 @@ class _ConsolidationScreenState extends State<ConsolidationScreen> {
   }
 
   Future<void> _loadConsolidation() async {
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _loadError = null;
+    });
     try {
       final response = await MobileApiService.consolidation(
         year: _year,
@@ -118,20 +160,21 @@ class _ConsolidationScreenState extends State<ConsolidationScreen> {
       if (!mounted) return;
       setState(() {
         _stats = Map<String, dynamic>.from((response['stats'] as Map?) ?? {});
-        _submissions = submissions.map((row) => Map<String, dynamic>.from(row as Map)).toList();
-        _years = years.map((year) => int.tryParse('$year') ?? DateTime.now().year).toSet().toList()..sort((a, b) => b.compareTo(a));
+        _submissions = submissions
+            .map((row) => Map<String, dynamic>.from(row as Map))
+            .toList();
+        _years =
+            years
+                .map((year) => int.tryParse('$year') ?? DateTime.now().year)
+                .toSet()
+                .toList()
+              ..sort((a, b) => b.compareTo(a));
       });
     } on MobileApiException catch (exception) {
-      if (mounted) _showMessage(exception.message);
+      if (mounted) setState(() => _loadError = exception.message);
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
-  }
-
-  void _showMessage(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: AppColors.primaryRed),
-    );
   }
 
   void _handleNavSelection(PresidentNavItem item) {
@@ -145,7 +188,8 @@ class _Filters extends StatelessWidget {
   final String period;
   final int month;
   final String quarter;
-  final void Function(int year, String period, int month, String quarter) onChanged;
+  final void Function(int year, String period, int month, String quarter)
+  onChanged;
 
   const _Filters({
     required this.year,
@@ -159,56 +203,78 @@ class _Filters extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.borderPink),
-      ),
+      padding: const EdgeInsets.all(14),
+      decoration: AppDecorations.surface(),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
+          const AppOverline('Reporting period'),
+          const SizedBox(height: 12),
+          AppAdaptiveRow(
             children: [
               Expanded(
                 child: DropdownButtonFormField<int>(
+                  isExpanded: true,
                   initialValue: year,
                   decoration: _filterDecoration('Year'),
-                  items: years.map((value) => DropdownMenuItem(value: value, child: Text('$value'))).toList(),
-                  onChanged: (value) => onChanged(value ?? year, period, month, quarter),
+                  items: years
+                      .map(
+                        (value) => DropdownMenuItem(
+                          value: value,
+                          child: Text('$value'),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (value) =>
+                      onChanged(value ?? year, period, month, quarter),
                 ),
               ),
               const SizedBox(width: 8),
               Expanded(
                 child: DropdownButtonFormField<String>(
+                  isExpanded: true,
                   initialValue: period,
                   decoration: _filterDecoration('Period'),
                   items: const [
                     DropdownMenuItem(value: 'all', child: Text('All')),
                     DropdownMenuItem(value: 'monthly', child: Text('Monthly')),
-                    DropdownMenuItem(value: 'quarterly', child: Text('Quarterly')),
+                    DropdownMenuItem(
+                      value: 'quarterly',
+                      child: Text('Quarterly'),
+                    ),
                     DropdownMenuItem(value: 'annual', child: Text('Annual')),
                   ],
-                  onChanged: (value) => onChanged(year, value ?? period, month, quarter),
+                  onChanged: (value) =>
+                      onChanged(year, value ?? period, month, quarter),
                 ),
               ),
             ],
           ),
           if (period == 'monthly' || period == 'quarterly') ...[
-            const SizedBox(height: 8),
-            Row(
+            const SizedBox(height: 12),
+            AppAdaptiveRow(
               children: [
                 if (period == 'monthly')
                   Expanded(
                     child: DropdownButtonFormField<int>(
+                      isExpanded: true,
                       initialValue: month,
                       decoration: _filterDecoration('Month'),
-                      items: List.generate(12, (index) => DropdownMenuItem(value: index + 1, child: Text('${index + 1}'))),
-                      onChanged: (value) => onChanged(year, period, value ?? month, quarter),
+                      items: List.generate(
+                        12,
+                        (index) => DropdownMenuItem(
+                          value: index + 1,
+                          child: Text('${index + 1}'),
+                        ),
+                      ),
+                      onChanged: (value) =>
+                          onChanged(year, period, value ?? month, quarter),
                     ),
                   ),
                 if (period == 'quarterly')
                   Expanded(
                     child: DropdownButtonFormField<String>(
+                      isExpanded: true,
                       initialValue: quarter,
                       decoration: _filterDecoration('Quarter'),
                       items: const [
@@ -217,7 +283,8 @@ class _Filters extends StatelessWidget {
                         DropdownMenuItem(value: 'Q3', child: Text('Q3')),
                         DropdownMenuItem(value: 'Q4', child: Text('Q4')),
                       ],
-                      onChanged: (value) => onChanged(year, period, month, value ?? quarter),
+                      onChanged: (value) =>
+                          onChanged(year, period, month, value ?? quarter),
                     ),
                   ),
               ],
@@ -232,35 +299,31 @@ class _Filters extends StatelessWidget {
 InputDecoration _filterDecoration(String label) {
   return InputDecoration(
     labelText: label,
-    filled: true,
-    fillColor: AppColors.softPink,
-    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
   );
 }
 
 class _Stat extends StatelessWidget {
   final String label;
   final String value;
+  final IconData icon;
   final Color color;
 
-  const _Stat({required this.label, required this.value, this.color = AppColors.primaryRed});
+  const _Stat({
+    required this.label,
+    required this.value,
+    required this.icon,
+    this.color = AppColors.primaryRed,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.borderPink),
-      ),
-      child: Column(
-        children: [
-          Text(value, style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: color)),
-          Text(label, style: const TextStyle(color: AppColors.lightText, fontSize: 12)),
-        ],
-      ),
+    return AppStatistic(
+      label: label,
+      value: value,
+      icon: icon,
+      color: color,
+      dot: color != AppColors.primaryRed,
     );
   }
 }
@@ -273,37 +336,51 @@ class _BarangaySubmissionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final submitted = row['status'] == 'submitted';
+    final name = row['barangay']?.toString() ?? 'Barangay';
+    final color = submitted ? AppColors.success : AppColors.warning;
 
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: submitted ? Colors.green : AppColors.borderPink),
-      ),
+    return AppAccentCard(
+      accent: color,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
+              AppIconTile(
+                icon: Icons.location_city_outlined,
+                color: AppColors.primaryRed,
+                size: 19,
+              ),
+              const SizedBox(width: 12),
               Expanded(
                 child: Text(
-                  row['barangay']?.toString() ?? 'Barangay',
-                  style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.darkGray),
+                  name,
+                  style: Theme.of(context).textTheme.titleSmall,
                 ),
-              ),
-              Chip(
-                label: Text(submitted ? 'Submitted' : 'Pending'),
-                backgroundColor: submitted ? const Color(0xFFE8F5E9) : const Color(0xFFFFF8E1),
               ),
             ],
           ),
-          const SizedBox(height: 8),
-          _Line(label: 'Monthly', value: row['monthly']?.toString() ?? 'Pending'),
-          _Line(label: 'Quarterly', value: row['quarterly']?.toString() ?? 'Pending'),
+          const SizedBox(height: 10),
+          AppStatusBadge(
+            label: submitted ? 'Submitted' : 'Pending',
+            color: color,
+            dot: true,
+          ),
+          const SizedBox(height: 12),
+          _Line(
+            label: 'Monthly',
+            value: row['monthly']?.toString() ?? 'Pending',
+          ),
+          _Line(
+            label: 'Quarterly',
+            value: row['quarterly']?.toString() ?? 'Pending',
+          ),
           _Line(label: 'Annual', value: row['annual']?.toString() ?? 'Pending'),
-          const SizedBox(height: 8),
-          Text('Last: ${row['last_submission']}', style: const TextStyle(color: AppColors.lightText, fontSize: 12)),
+          const SizedBox(height: 10),
+          AppMeta(
+            icon: Icons.schedule_rounded,
+            label: 'Last: ${row['last_submission']}',
+          ),
         ],
       ),
     );
@@ -318,12 +395,33 @@ class _Line extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
+    final done = value.toLowerCase().contains('submitted');
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: AppDecorations.inset(radius: 12),
       child: Row(
         children: [
-          SizedBox(width: 76, child: Text(label, style: const TextStyle(color: AppColors.lightText, fontSize: 12))),
-          Expanded(child: Text(value, style: const TextStyle(fontSize: 12))),
+          Text(
+            label,
+            style: const TextStyle(
+              color: AppColors.lightText,
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              value,
+              textAlign: TextAlign.end,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+                color: done ? AppColors.success : AppColors.warning,
+              ),
+            ),
+          ),
         ],
       ),
     );

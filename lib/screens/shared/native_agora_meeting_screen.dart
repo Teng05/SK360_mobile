@@ -56,9 +56,14 @@ class _NativeAgoraMeetingScreenState extends State<NativeAgoraMeetingScreen> {
   }
 
   Future<void> _join() async {
-    final permissions = await [Permission.camera, Permission.microphone].request();
+    final permissions = await [
+      Permission.camera,
+      Permission.microphone,
+    ].request();
     if (permissions.values.any((status) => !status.isGranted)) {
-      setState(() => _status = 'Camera and microphone permission are required.');
+      setState(
+        () => _status = 'Camera and microphone permission are required.',
+      );
       return;
     }
 
@@ -68,7 +73,8 @@ class _NativeAgoraMeetingScreenState extends State<NativeAgoraMeetingScreen> {
       ).timeout(const Duration(seconds: 12));
       final appId = token['appId']?.toString() ?? '';
       final rtcToken = token['token']?.toString() ?? '';
-      final channel = token['channel']?.toString() ?? 'meeting-${widget.meetingId}';
+      final channel =
+          token['channel']?.toString() ?? 'meeting-${widget.meetingId}';
       final uid = int.tryParse(token['uid']?.toString() ?? '') ?? 0;
 
       if (appId.isEmpty || rtcToken.isEmpty) {
@@ -126,7 +132,9 @@ class _NativeAgoraMeetingScreenState extends State<NativeAgoraMeetingScreen> {
         ),
       );
 
-      await engine.setChannelProfile(ChannelProfileType.channelProfileCommunication);
+      await engine.setChannelProfile(
+        ChannelProfileType.channelProfileCommunication,
+      );
       await engine.setClientRole(role: ClientRoleType.clientRoleBroadcaster);
       await engine.enableAudio();
       await engine.enableVideo();
@@ -144,25 +152,33 @@ class _NativeAgoraMeetingScreenState extends State<NativeAgoraMeetingScreen> {
         _status = 'Connected';
       });
 
-      unawaited(engine.joinChannel(
-        token: rtcToken,
-        channelId: channel,
-        uid: uid,
-        options: const ChannelMediaOptions(
-          channelProfile: ChannelProfileType.channelProfileCommunication,
-          clientRoleType: ClientRoleType.clientRoleBroadcaster,
-        ),
-      ).timeout(const Duration(seconds: 15)).catchError((exception) {
-        if (mounted) {
-          setState(() {
-            _status = 'Join request sent. Waiting for Agora connection...';
-          });
-        }
-      }));
+      unawaited(
+        engine
+            .joinChannel(
+              token: rtcToken,
+              channelId: channel,
+              uid: uid,
+              options: const ChannelMediaOptions(
+                channelProfile: ChannelProfileType.channelProfileCommunication,
+                clientRoleType: ClientRoleType.clientRoleBroadcaster,
+              ),
+            )
+            .timeout(const Duration(seconds: 15))
+            .catchError((exception) {
+              if (mounted) {
+                setState(() {
+                  _status =
+                      'Join request sent. Waiting for Agora connection...';
+                });
+              }
+            }),
+      );
     } on MobileApiException catch (exception) {
       setState(() => _status = exception.message);
     } on TimeoutException {
-      setState(() => _status = 'Joining timed out. Check server, token, or network.');
+      setState(
+        () => _status = 'Joining timed out. Check server, token, or network.',
+      );
     } catch (exception) {
       setState(() => _status = 'Unable to join meeting: $exception');
     }
@@ -201,29 +217,25 @@ class _NativeAgoraMeetingScreenState extends State<NativeAgoraMeetingScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF111111),
+      backgroundColor: AppColors.lightGrayBg,
       appBar: AppBar(
-        backgroundColor: AppColors.primaryRed,
-        foregroundColor: Colors.white,
+        backgroundColor: AppColors.lightGrayBg,
+        foregroundColor: AppColors.darkGray,
         title: Text(widget.title),
       ),
       body: SafeArea(
         child: Column(
           children: [
-            Expanded(
-              child: _participantGrid(),
-            ),
+            Expanded(child: _participantGrid()),
             Container(
               width: double.infinity,
               padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
-              color: const Color(0xFF0F172A),
+              color: AppColors.surface,
               child: Column(
                 children: [
                   Text(
-                    _channel.isEmpty
-                        ? _status
-                        : '$_status  |  $_channel',
-                    style: const TextStyle(color: Colors.white70),
+                    _status,
+                    style: const TextStyle(color: AppColors.lightText),
                   ),
                   const SizedBox(height: 10),
                   OutlinedButton.icon(
@@ -231,26 +243,28 @@ class _NativeAgoraMeetingScreenState extends State<NativeAgoraMeetingScreen> {
                     icon: const Icon(Icons.people_alt_outlined),
                     label: Text('Participants (${_remoteUids.length + 1})'),
                     style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.white,
-                      side: const BorderSide(color: Colors.white38),
+                      foregroundColor: AppColors.darkGray,
+                      side: const BorderSide(color: AppColors.border),
                     ),
                   ),
                   const SizedBox(height: 4),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
+                  Wrap(
+                    alignment: WrapAlignment.center,
+                    spacing: 8,
+                    runSpacing: 8,
                     children: [
                       _ControlButton(
                         label: _muted ? 'Unmute' : 'Mute',
                         icon: _muted ? Icons.mic_off : Icons.mic,
                         onTap: _joined ? _toggleMic : null,
                       ),
-                      const SizedBox(width: 10),
+
                       _ControlButton(
                         label: _cameraOff ? 'Camera On' : 'Camera Off',
                         icon: _cameraOff ? Icons.videocam_off : Icons.videocam,
                         onTap: _joined ? _toggleCamera : null,
                       ),
-                      const SizedBox(width: 10),
+
                       _ControlButton(
                         label: 'Leave',
                         icon: Icons.call_end,
@@ -270,7 +284,8 @@ class _NativeAgoraMeetingScreenState extends State<NativeAgoraMeetingScreen> {
 
   Widget _participantGrid() {
     final orderedRemoteUids = [..._remoteUids];
-    if (_activeSpeakerUid != null && orderedRemoteUids.remove(_activeSpeakerUid)) {
+    if (_activeSpeakerUid != null &&
+        orderedRemoteUids.remove(_activeSpeakerUid)) {
       orderedRemoteUids.insert(0, _activeSpeakerUid!);
     }
     final visibleRemoteUids = orderedRemoteUids.take(5).toList();
@@ -278,14 +293,17 @@ class _NativeAgoraMeetingScreenState extends State<NativeAgoraMeetingScreen> {
 
     if (_engine == null) {
       return const Center(
-        child: Text('Joining meeting...', style: TextStyle(color: Colors.white70)),
+        child: Text(
+          'Joining meeting...',
+          style: TextStyle(color: AppColors.lightText),
+        ),
       );
     }
 
     return GridView.builder(
       padding: const EdgeInsets.all(10),
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: totalTiles <= 1 ? 1 : totalTiles <= 4 ? 2 : 3,
+        crossAxisCount: totalTiles <= 1 ? 1 : 2,
         crossAxisSpacing: 8,
         mainAxisSpacing: 8,
         childAspectRatio: 0.82,
@@ -302,6 +320,7 @@ class _NativeAgoraMeetingScreenState extends State<NativeAgoraMeetingScreen> {
               isLocal ? _localView() : _remoteView(uid!),
               Positioned(
                 left: 8,
+                right: 8,
                 bottom: 8,
                 child: DecoratedBox(
                   decoration: BoxDecoration(
@@ -309,20 +328,31 @@ class _NativeAgoraMeetingScreenState extends State<NativeAgoraMeetingScreen> {
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
                           isLocal ? _currentUserName : 'Participant $uid',
-                          style: const TextStyle(color: Colors.white, fontSize: 11),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 13,
+                          ),
                         ),
                         Text(
                           isLocal
                               ? 'You'
-                              : (_activeSpeakerUid == uid ? 'Speaking' : 'Participant'),
-                          style: const TextStyle(color: Colors.white70, fontSize: 10),
+                              : (_activeSpeakerUid == uid
+                                    ? 'Speaking'
+                                    : 'Participant'),
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 13,
+                          ),
                         ),
                       ],
                     ),
@@ -340,7 +370,7 @@ class _NativeAgoraMeetingScreenState extends State<NativeAgoraMeetingScreen> {
     final engine = _engine;
     if (engine == null || _cameraOffUids.contains(remoteUid)) {
       return const Center(
-        child: Icon(Icons.person, color: Colors.white70, size: 42),
+        child: Icon(Icons.person_outline, color: AppColors.lightText, size: 42),
       );
     }
 
@@ -357,8 +387,12 @@ class _NativeAgoraMeetingScreenState extends State<NativeAgoraMeetingScreen> {
     final engine = _engine;
     if (engine == null || _cameraOff) {
       return Container(
-        color: const Color(0xFF1E293B),
-        child: const Icon(Icons.person, color: Colors.white70, size: 42),
+        color: AppColors.field,
+        child: const Icon(
+          Icons.person_outline,
+          color: AppColors.lightText,
+          size: 42,
+        ),
       );
     }
 
@@ -375,27 +409,41 @@ class _NativeAgoraMeetingScreenState extends State<NativeAgoraMeetingScreen> {
   void _showParticipants() {
     showModalBottomSheet<void>(
       context: context,
-      backgroundColor: const Color(0xFF0F172A),
+      backgroundColor: AppColors.surface,
       builder: (context) => SafeArea(
         child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
           shrinkWrap: true,
           padding: const EdgeInsets.all(18),
           children: [
             Text(
               'Participants (${_remoteUids.length + 1})',
-              style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+              style: const TextStyle(
+                color: AppColors.darkGray,
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
             ),
             const SizedBox(height: 12),
             const ListTile(
-              leading: Icon(Icons.person, color: Colors.white70),
-              title: Text('You', style: TextStyle(color: Colors.white)),
+              leading: Icon(Icons.person, color: AppColors.lightText),
+              title: Text('You', style: TextStyle(color: AppColors.darkGray)),
             ),
             ..._remoteUids.map(
               (uid) => ListTile(
-                leading: const Icon(Icons.person_outline, color: Colors.white70),
-                title: Text('Participant $uid', style: const TextStyle(color: Colors.white)),
+                leading: const Icon(
+                  Icons.person_outline,
+                  color: AppColors.lightText,
+                ),
+                title: Text(
+                  'Participant $uid',
+                  style: const TextStyle(color: AppColors.darkGray),
+                ),
                 trailing: _activeSpeakerUid == uid
-                    ? const Text('Speaking', style: TextStyle(color: Colors.greenAccent))
+                    ? const Text(
+                        'Speaking',
+                        style: TextStyle(color: AppColors.success),
+                      )
                     : null,
               ),
             ),
@@ -416,7 +464,7 @@ class _ControlButton extends StatelessWidget {
     required this.label,
     required this.icon,
     required this.onTap,
-    this.color = const Color(0xFF334155),
+    this.color = AppColors.darkGray,
   });
 
   @override
@@ -428,7 +476,7 @@ class _ControlButton extends StatelessWidget {
       style: ElevatedButton.styleFrom(
         backgroundColor: color,
         foregroundColor: Colors.white,
-        disabledBackgroundColor: const Color(0xFF1E293B),
+        disabledBackgroundColor: AppColors.field,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
     );

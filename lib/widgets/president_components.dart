@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../routes.dart';
 import '../services/mobile_api_service.dart';
 import '../ui/app_ui.dart';
+import 'community_avatar.dart';
 import 'notification_bell.dart';
 
 enum PresidentNavItem {
@@ -17,6 +18,8 @@ enum PresidentNavItem {
 
 enum PresidentHeaderLeading { menu, back, none }
 
+/// The single page header used across the app:
+/// [menu or back] [logo] Title / subtitle · [bell] [extra actions] [avatar].
 class PresidentHeader extends StatelessWidget {
   final PresidentHeaderLeading leading;
   final VoidCallback? onLeadingTap;
@@ -37,61 +40,104 @@ class PresidentHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.only(left: 12, right: 12, top: 8, bottom: 18),
-      decoration: const BoxDecoration(
-        color: AppColors.primaryRed,
-        borderRadius: BorderRadius.only(
-          bottomLeft: Radius.circular(24),
-          bottomRight: Radius.circular(24),
-        ),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          if (leading != PresidentHeaderLeading.none)
-            IconButton(
-              onPressed: onLeadingTap,
-              icon: Icon(
-                leading == PresidentHeaderLeading.menu
-                    ? Icons.menu_rounded
-                    : Icons.arrow_back_ios_new,
-                color: Colors.white,
-              ),
-            )
-          else
-            const SizedBox(width: 48),
-          Expanded(child: customContent ?? _buildDefaultCenter()),
-          Row(
-            mainAxisSize: MainAxisSize.min,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final largeText = MediaQuery.textScalerOf(context).scale(14) > 18;
+        final roomy = constraints.maxWidth >= 360 && !largeText;
+        final showLogo =
+            customContent == null &&
+            (title.startsWith('SK 360') ||
+                (constraints.maxWidth >= 410 && !largeText));
+        return Container(
+          decoration: const BoxDecoration(
+            color: AppColors.surface,
+            border: Border(bottom: BorderSide(color: AppColors.border)),
+          ),
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+          child: Row(
             children: [
+              if (leading != PresidentHeaderLeading.none) ...[
+                AppHeaderButton(
+                  tooltip: leading == PresidentHeaderLeading.menu
+                      ? 'Open menu'
+                      : 'Back',
+                  onPressed: onLeadingTap,
+                  icon: leading == PresidentHeaderLeading.menu
+                      ? Icons.menu_rounded
+                      : Icons.arrow_back_rounded,
+                ),
+                const SizedBox(width: 10),
+              ] else
+                const SizedBox(width: 4),
+              if (showLogo) ...[
+                const AppLogoTile(size: 36),
+                const SizedBox(width: 10),
+              ],
+              Expanded(
+                child:
+                    customContent ??
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.titleLarge,
+                        ),
+                        const SizedBox(height: 1),
+                        Text(
+                          subtitle,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(fontWeight: FontWeight.w600),
+                        ),
+                      ],
+                    ),
+              ),
+              const SizedBox(width: 4),
               const NotificationBell(),
               if (trailing != null) ...trailing!,
+              if (roomy) ...[const SizedBox(width: 6), const _HeaderAvatar()],
             ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
+}
 
-  Widget _buildDefaultCenter() {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          title,
-          style: const TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
+/// The signed-in official's photo, opening their profile.
+class _HeaderAvatar extends StatelessWidget {
+  const _HeaderAvatar();
+
+  @override
+  Widget build(BuildContext context) {
+    final user = MobileApiService.currentUser ?? {};
+    final name = [
+      user['first_name'],
+      user['last_name'],
+    ].where((part) => part != null).join(' ');
+    return Tooltip(
+      message: 'Your profile',
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: () => handleRoleNavSelection(context, PresidentNavItem.profile),
+        child: Container(
+          padding: const EdgeInsets.all(2),
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: Border.all(color: AppColors.borderPink, width: 1.5),
+          ),
+          child: CommunityAvatar(
+            name: name,
+            photoUrl: user['profile_pic_url']?.toString(),
+            radius: 17,
           ),
         ),
-        const SizedBox(height: 4),
-        Text(
-          subtitle,
-          style: const TextStyle(fontSize: 14, color: Colors.white70),
-        ),
-      ],
+      ),
     );
   }
 }
@@ -107,50 +153,113 @@ class PresidentBottomNavBar extends StatelessWidget {
   });
 
   static const List<_BottomItem> _items = [
-    _BottomItem(PresidentNavItem.home, 'Home', Icons.home_outlined),
-    _BottomItem(PresidentNavItem.calendar, 'Calendar', Icons.event_note),
-    _BottomItem(PresidentNavItem.chat, 'Chat', Icons.chat_bubble_outline),
-    _BottomItem(PresidentNavItem.profile, 'Profile', Icons.person_outline),
+    _BottomItem(
+      PresidentNavItem.home,
+      'Home',
+      Icons.home_outlined,
+      Icons.home_rounded,
+    ),
+    _BottomItem(
+      PresidentNavItem.calendar,
+      'Calendar',
+      Icons.calendar_month_outlined,
+      Icons.calendar_month_rounded,
+    ),
+    _BottomItem(
+      PresidentNavItem.chat,
+      'Chat',
+      Icons.chat_bubble_outline_rounded,
+      Icons.chat_bubble_rounded,
+    ),
+    _BottomItem(
+      PresidentNavItem.profile,
+      'Profile',
+      Icons.person_outline_rounded,
+      Icons.person_rounded,
+    ),
   ];
 
   @override
   Widget build(BuildContext context) {
-    final items = _items;
-
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
       decoration: const BoxDecoration(
-        color: AppColors.primaryRed,
-        borderRadius: BorderRadius.only(
-          topLeft: Radius.circular(24),
-          topRight: Radius.circular(24),
-        ),
+        color: AppColors.surface,
+        border: Border(top: BorderSide(color: AppColors.border)),
+        boxShadow: [
+          BoxShadow(
+            color: Color(0x0A1B2130),
+            blurRadius: 16,
+            offset: Offset(0, -4),
+          ),
+        ],
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: items.map((item) {
-          final bool isActive = item.item == activeItem;
-          return GestureDetector(
-            onTap: () => onItemSelected(item.item),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  item.icon,
-                  color: isActive ? const Color(0xFFFFD54F) : Colors.white70,
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  item.label,
-                  style: TextStyle(
-                    color: isActive ? const Color(0xFFFFD54F) : Colors.white70,
-                    fontWeight: isActive ? FontWeight.bold : FontWeight.w500,
+      child: Material(
+        color: AppColors.surface,
+        child: SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(8, 6, 8, 4),
+            child: Row(
+              children: _items.map((item) {
+                final selected = item.item == activeItem;
+                final color = selected
+                    ? AppColors.primaryRed
+                    : AppColors.lightText;
+                return Expanded(
+                  child: Semantics(
+                    selected: selected,
+                    button: true,
+                    label: item.label,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(16),
+                      onTap: selected ? null : () => onItemSelected(item.item),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 5),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            AnimatedContainer(
+                              duration: const Duration(milliseconds: 200),
+                              curve: Curves.easeOut,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 18,
+                                vertical: 5,
+                              ),
+                              decoration: BoxDecoration(
+                                color: selected
+                                    ? AppColors.softPink
+                                    : Colors.transparent,
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                              child: Icon(
+                                selected ? item.activeIcon : item.icon,
+                                size: 23,
+                                color: color,
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              item.label,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: selected
+                                    ? FontWeight.w800
+                                    : FontWeight.w600,
+                                color: color,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
                   ),
-                ),
-              ],
+                );
+              }).toList(),
             ),
-          );
-        }).toList(),
+          ),
+        ),
       ),
     );
   }
@@ -160,8 +269,9 @@ class _BottomItem {
   final PresidentNavItem item;
   final String label;
   final IconData icon;
+  final IconData activeIcon;
 
-  const _BottomItem(this.item, this.label, this.icon);
+  const _BottomItem(this.item, this.label, this.icon, this.activeIcon);
 }
 
 class PresidentSideDrawer extends StatelessWidget {
@@ -169,20 +279,20 @@ class PresidentSideDrawer extends StatelessWidget {
 
   static final List<_DrawerItem> _presidentItems = [
     _DrawerItem('Consolidation', Icons.folder_copy_outlined),
-    _DrawerItem('Module Management', Icons.tune),
-    _DrawerItem('View Reports', Icons.receipt_long),
+    _DrawerItem('Module Management', Icons.dashboard_customize_outlined),
+    _DrawerItem('View Reports', Icons.receipt_long_outlined),
     _DrawerItem('Announcements', Icons.campaign_outlined),
     _DrawerItem('Leadership Profiles', Icons.badge_outlined),
-    _DrawerItem('Video Meetings', Icons.video_call),
+    _DrawerItem('Video Meetings', Icons.videocam_outlined),
     _DrawerItem('Rankings', Icons.emoji_events_outlined),
   ];
 
   static final List<_DrawerItem> _chairmanItems = [
-    _DrawerItem('Reports', Icons.receipt_long),
+    _DrawerItem('Reports', Icons.receipt_long_outlined),
     _DrawerItem('Budget', Icons.account_balance_wallet_outlined),
     _DrawerItem('Announcements', Icons.campaign_outlined),
     _DrawerItem('Leadership Profiles', Icons.badge_outlined),
-    _DrawerItem('Video Meetings', Icons.video_call),
+    _DrawerItem('Video Meetings', Icons.videocam_outlined),
     _DrawerItem('Rankings', Icons.emoji_events_outlined),
   ];
 
@@ -196,72 +306,125 @@ class PresidentSideDrawer extends StatelessWidget {
       'sk_secretary' => 'SK Secretary',
       _ => 'SK Federation President',
     };
-
+    final user = MobileApiService.currentUser ?? {};
+    final name = [
+      user['first_name'],
+      user['last_name'],
+    ].where((part) => part != null).join(' ');
     return Drawer(
-      child: Container(
-        color: AppColors.primaryRed,
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'SK 360°',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.horizontal(right: Radius.circular(24)),
+      ),
+      child: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
+          children: [
+            const AppHeader(),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: AppColors.softPink,
+                borderRadius: BorderRadius.circular(AppSpace.radius),
+                border: Border.all(color: AppColors.borderPink),
+              ),
+              child: Row(
+                children: [
+                  CommunityAvatar(
+                    name: name,
+                    photoUrl: user['profile_pic_url']?.toString(),
+                    radius: 22,
                   ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  roleLabel,
-                  style: const TextStyle(color: Colors.white70, fontSize: 14),
-                ),
-                const SizedBox(height: 32),
-                ...menuItems.map(
-                  (item) => Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 10),
-                    child: GestureDetector(
-                      onTap: () => _handleMenuItemTap(context, item.label),
-                      child: Row(
-                        children: [
-                          Icon(
-                            item.icon,
-                            color: _selectedItem(context) == item.label
-                                ? const Color(0xFFFFD54F)
-                                : Colors.white,
-                            size: 22,
-                          ),
-                          const SizedBox(width: 16),
-                          Text(
-                            item.label,
-                            style: TextStyle(
-                              color: _selectedItem(context) == item.label
-                                  ? const Color(0xFFFFD54F)
-                                  : Colors.white,
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          name.isEmpty ? 'SK official' : name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.titleSmall,
+                        ),
+                        const SizedBox(height: 4),
+                        AppStatusBadge(
+                          label: roleLabel,
+                          color: AppColors.primaryRed,
+                          dot: true,
+                        ),
+                      ],
                     ),
                   ),
-                ),
-                const Spacer(),
-                const Text(
-                  'Empowering SK Governance',
-                  style: TextStyle(
-                    color: Colors.white70,
-                    fontSize: 12,
-                    letterSpacing: 0.5,
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
+            const SizedBox(height: 24),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 4),
+              child: AppOverline('Your workspace'),
+            ),
+            const SizedBox(height: 10),
+            ...menuItems.map((item) {
+              final selected = _selectedItem(context) == item.label;
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: ListTile(
+                  selected: selected,
+                  selectedColor: AppColors.actionRed,
+                  selectedTileColor: AppColors.softPink,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 2,
+                  ),
+                  leading: Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: selected
+                          ? AppColors.primaryRed
+                          : AppColors.primaryRed.withValues(alpha: .07),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(
+                      item.icon,
+                      size: 20,
+                      color: selected ? Colors.white : AppColors.primaryRed,
+                    ),
+                  ),
+                  title: Text(
+                    item.label,
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                    ),
+                  ),
+                  trailing: selected
+                      ? const Icon(
+                          Icons.chevron_right_rounded,
+                          color: AppColors.actionRed,
+                        )
+                      : null,
+                  onTap: () => _handleMenuItemTap(context, item.label),
+                ),
+              );
+            }),
+            const Divider(height: 32),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 4),
+              child: Text(
+                'Serving the youth of Lipa City',
+                style: TextStyle(
+                  color: AppColors.lightText,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -272,7 +435,8 @@ class PresidentSideDrawer extends StatelessWidget {
     return switch (route) {
       AppRoutes.consolidation => 'Consolidation',
       AppRoutes.moduleManagement => 'Module Management',
-      AppRoutes.reports => 'View Reports',
+      AppRoutes.reports =>
+        _currentRole() == 'sk_president' ? 'View Reports' : 'Reports',
       AppRoutes.budget => 'Budget',
       AppRoutes.announcements => 'Announcements',
       AppRoutes.leadershipProfiles => 'Leadership Profiles',
@@ -332,6 +496,16 @@ class _DrawerItem {
 }
 
 void handleRoleNavSelection(BuildContext context, PresidentNavItem item) {
+  final destination = switch (item) {
+    PresidentNavItem.home => _homeRouteForCurrentRole(),
+    PresidentNavItem.calendar => AppRoutes.presidentCalendar,
+    PresidentNavItem.chat => AppRoutes.presidentMessages,
+    PresidentNavItem.profile => AppRoutes.profile,
+    PresidentNavItem.announcements => AppRoutes.announcements,
+    PresidentNavItem.leadership => AppRoutes.leadershipProfiles,
+    PresidentNavItem.rankings => AppRoutes.rankings,
+  };
+  if (ModalRoute.of(context)?.settings.name == destination) return;
   switch (item) {
     case PresidentNavItem.home:
       Navigator.pushReplacementNamed(context, _homeRouteForCurrentRole());

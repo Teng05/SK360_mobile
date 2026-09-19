@@ -7,6 +7,9 @@ import '../../routes.dart';
 import '../../services/mobile_api_service.dart';
 import '../../ui/app_ui.dart';
 import '../../widgets/president_components.dart';
+import '../../widgets/community_post.dart';
+import '../../widgets/community_avatar.dart';
+import 'create_post_screen.dart';
 
 class MobileDashboardScreen extends StatefulWidget {
   const MobileDashboardScreen({super.key});
@@ -21,7 +24,9 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
   Timer? _exitTimer;
   bool _canExit = false;
   bool _isLoading = false;
+  String? _loadError;
   int _activeFeedTab = 0;
+  bool _communityOnly = false;
 
   Map<String, dynamic> get _data => MobileApiService.syncedData ?? {};
   Map<String, dynamic> get _user => MobileApiService.currentUser ?? {};
@@ -77,16 +82,19 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
         drawer: const PresidentSideDrawer(),
         backgroundColor: AppColors.lightGrayBg,
         appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(86),
-        child: SafeArea(
-          bottom: false,
-          child: PresidentHeader(
-            leading: PresidentHeaderLeading.menu,
-            onLeadingTap: () => _scaffoldKey.currentState?.openDrawer(),
-            title: 'SK 360',
-            subtitle: barangay,
+          preferredSize: Size.fromHeight(
+            (MediaQuery.textScalerOf(context).scale(1) > 1.2 ? 92 : 76) *
+                MediaQuery.textScalerOf(context).scale(1),
           ),
-        ),
+          child: SafeArea(
+            bottom: false,
+            child: PresidentHeader(
+              leading: PresidentHeaderLeading.menu,
+              onLeadingTap: () => _scaffoldKey.currentState?.openDrawer(),
+              title: 'SK 360°',
+              subtitle: barangay,
+            ),
+          ),
         ),
         bottomNavigationBar: PresidentBottomNavBar(
           activeItem: PresidentNavItem.home,
@@ -96,61 +104,105 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
           child: RefreshIndicator(
             onRefresh: _refresh,
             child: ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
               controller: _scrollController,
-            padding: const EdgeInsets.only(bottom: 18),
-            children: [
-              if (_isLoading) const LinearProgressIndicator(minHeight: 3),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: _StatCard(
-                        title: 'Engagement',
-                        value: '${posts.length}',
-                        caption: 'posts',
-                        icon: Icons.trending_up,
-                        color: AppColors.primaryRed,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _StatCard(
-                        title: 'Active Users',
-                        value: '${_rows('barangays').length}',
-                        caption: 'barangays',
-                        icon: Icons.people_alt_outlined,
-                        color: const Color(0xFF0F5BFF),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                child: _UpcomingMeetingsCard(meetings: meetings),
-              ),
-              if (_user['role']?.toString() == 'sk_president')
+              padding: const EdgeInsets.only(bottom: 18),
+              children: [
+                if (_isLoading) const AppLoadingIndicator(),
+                if (_loadError != null)
+                  AppEmptyState(
+                    icon: Icons.cloud_off_outlined,
+                    title: 'Unable to refresh',
+                    message:
+                        'Check your connection and try again. Previously loaded records may still be shown.',
+                    onAction: _refresh,
+                  ),
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                  child: _QuickActions(onOpen: _openRoute),
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                  child: SegmentedButton<bool>(
+                    segments: const [
+                      ButtonSegment(
+                        value: false,
+                        label: Text('Overview'),
+                        icon: Icon(Icons.dashboard_outlined),
+                      ),
+                      ButtonSegment(
+                        value: true,
+                        label: Text('Community'),
+                        icon: Icon(Icons.people_outline),
+                      ),
+                    ],
+                    selected: {_communityOnly},
+                    showSelectedIcon: false,
+                    onSelectionChanged: (selection) =>
+                        setState(() => _communityOnly = selection.first),
+                  ),
                 ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                child: _SharedWallComposer(
-                  isPosting: _isLoading,
-                  onPost: _createWallPost,
+                if (!_communityOnly) ...[
+                  AppPageIntro(
+                    eyebrow: '${_roleLabel(_user['role'])} · $barangay',
+                    title: 'Hello, ${_user['first_name'] ?? 'SK official'}',
+                    subtitle: 'Stay on top of your council’s work.',
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
+                    child: AppMetricGrid(
+                      children: [
+                        _StatCard(
+                          title: 'Community posts',
+                          value: '${posts.length}',
+                          caption: 'Shared updates',
+                          icon: Icons.forum_outlined,
+                          color: AppColors.primaryRed,
+                        ),
+                        _StatCard(
+                          title: 'Barangays',
+                          value: '${_rows('barangays').length}',
+                          caption: 'Connected councils',
+                          icon: Icons.location_city_outlined,
+                          color: AppColors.info,
+                        ),
+                        _StatCard(
+                          title: 'Upcoming meetings',
+                          value: '${meetings.where(_isUpcomingMeeting).length}',
+                          caption: 'On the schedule',
+                          icon: Icons.event_available_outlined,
+                          color: AppColors.highlight,
+                        ),
+                        _StatCard(
+                          title: 'Open slots',
+                          value:
+                              '${_rows('submission_slots').where((slot) => slot['status']?.toString() == 'open').length}',
+                          caption: 'Submission windows',
+                          icon: Icons.inventory_2_outlined,
+                          color: AppColors.success,
+                        ),
+                      ],
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 24, 16, 0),
+                    child: _UpcomingMeetingsCard(meetings: meetings),
+                  ),
+
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 24, 16, 0),
+                    child: _QuickActions(onOpen: _openRoute),
+                  ),
+                ],
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 24, 16, 0),
+                  child: _SharedWallComposer(onOpen: _openComposer),
                 ),
-              ),
-              const SizedBox(height: 12),
-              _FeedSection(
-                activeTab: _activeFeedTab,
-                posts: _filteredPosts(posts),
-                onTabSelected: (index) =>
-                    setState(() => _activeFeedTab = index),
-                onLike: _toggleWallLike,
-              ),
-            ],
+                const SizedBox(height: 8),
+                _FeedSection(
+                  activeTab: _activeFeedTab,
+                  posts: _filteredPosts(posts),
+                  onTabSelected: (index) =>
+                      setState(() => _activeFeedTab = index),
+                  onLike: _toggleWallLike,
+                ),
+              ],
             ),
           ),
         ),
@@ -160,7 +212,9 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
 
   List<Map<String, dynamic>> _rows(String key) {
     final rows = _data[key] as List<dynamic>? ?? [];
-    final result = rows.map((row) => Map<String, dynamic>.from(row as Map)).toList();
+    final result = rows
+        .map((row) => Map<String, dynamic>.from(row as Map))
+        .toList();
 
     if (key == 'wall_posts') {
       result.sort(_compareNewestPosts);
@@ -197,28 +251,27 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
   }
 
   Future<void> _refresh() async {
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _loadError = null;
+    });
     try {
       await MobileApiService.sync();
     } on MobileApiException catch (exception) {
-      if (mounted) _showMessage(exception.message);
+      if (mounted) setState(() => _loadError = exception.message);
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  Future<void> _createWallPost(String content, String category) async {
-    setState(() => _isLoading = true);
-    try {
-      await MobileApiService.createWallPost(
-        content: content,
-        category: category,
-      );
-      if (mounted) _showMessage('Posted to shared wall.');
-    } on MobileApiException catch (exception) {
-      if (mounted) _showMessage(exception.message);
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
+  Future<void> _openComposer() async {
+    final posted = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (_) => const CreatePostScreen()),
+    );
+    if (mounted && posted == true) {
+      setState(() {});
+      _showMessage('Your post has been published.');
     }
   }
 
@@ -244,9 +297,9 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
   }
 
   void _showMessage(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: AppColors.primaryRed),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 }
 
@@ -267,61 +320,22 @@ class _StatCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: 92,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: color,
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(icon, color: Colors.white, size: 16),
-              const Spacer(),
-              Icon(
-                Icons.bar_chart,
-                color: Colors.white.withValues(alpha: 0.8),
-                size: 16,
-              ),
-            ],
-          ),
-          const Spacer(),
-          Text(
-            title,
-            style: const TextStyle(color: Colors.white, fontSize: 10),
-          ),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                value,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(width: 6),
-              Padding(
-                padding: const EdgeInsets.only(bottom: 4),
-                child: Text(
-                  caption,
-                  style: const TextStyle(
-                    color: Color(0xFFFFC107),
-                    fontSize: 10,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
+    return AppStatistic(
+      label: title,
+      value: value,
+      icon: icon,
+      caption: caption,
+      color: color,
     );
   }
 }
+
+String _roleLabel(Object? role) => switch (role?.toString()) {
+  'sk_chairman' => 'SK Chairman',
+  'sk_secretary' => 'SK Secretary',
+  'sk_president' => 'SK Federation',
+  _ => 'SK Official',
+};
 
 class _UpcomingMeetingsCard extends StatelessWidget {
   final List<Map<String, dynamic>> meetings;
@@ -332,51 +346,40 @@ class _UpcomingMeetingsCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final visible = meetings.where(_isUpcomingMeeting).toList()
       ..sort(_compareMeetings);
-    final upcoming = visible.take(2).toList();
-
-    return _Panel(
-      child: Column(
-        children: [
-          Row(
-            children: [
-              const Icon(
-                Icons.calendar_month,
-                color: AppColors.primaryRed,
-                size: 16,
-              ),
-              const SizedBox(width: 6),
-              const Text(
-                'Upcoming Meetings',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
-              ),
-              const Spacer(),
-              GestureDetector(
-                onTap: () =>
-                    Navigator.pushNamed(context, AppRoutes.videoMeetings),
-                child: const Text(
-                  'View All',
-                  style: TextStyle(
-                    color: Color(0xFF0F5BFF),
-                    fontWeight: FontWeight.bold,
-                    fontSize: 10,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        AppSectionHeading(
+          title: 'Coming up',
+          action: TextButton(
+            onPressed: () =>
+                Navigator.pushNamed(context, AppRoutes.videoMeetings),
+            child: const Text('View all'),
+          ),
+        ),
+        const SizedBox(height: 8),
+        if (visible.isEmpty)
+          const AppSurface(
+            child: Row(
+              children: [
+                AppIconTile(
+                  icon: Icons.event_available_outlined,
+                  color: AppColors.info,
+                  size: 20,
+                ),
+                SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'No upcoming meetings. Check your calendar for activities and deadlines.',
+                    style: TextStyle(color: AppColors.lightText),
                   ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          if (upcoming.isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 14),
-              child: Text(
-                'No meetings yet',
-                style: TextStyle(color: AppColors.lightText),
-              ),
-            )
-          else
-            ...upcoming.map((meeting) => _MeetingTile(row: meeting)),
-        ],
-      ),
+              ],
+            ),
+          )
+        else
+          ...visible.take(2).map((meeting) => _MeetingTile(row: meeting)),
+      ],
     );
   }
 }
@@ -438,78 +441,58 @@ class _MeetingTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final title = row['title']?.toString() ?? 'Meeting';
-    final date =
-        row['meeting_date']?.toString() ??
-        row['start_datetime']?.toString() ??
-        '';
-    final day = _day(date);
-    final month = _month(date);
+    final scheduled = _meetingDateTime(row);
+    final hasTime =
+        row['meeting_time']?.toString().isNotEmpty == true ||
+        (row['start_datetime']?.toString().contains('T') ?? false);
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFF),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0xFFE4E9FF)),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 40,
-            padding: const EdgeInsets.symmetric(vertical: 4),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: AppColors.borderPink),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: AppAccentCard(
+        accent: AppColors.primaryRed,
+        padding: const EdgeInsets.fromLTRB(16, 14, 14, 14),
+        child: Row(
+          children: [
+            AppDateBlock(date: scheduled),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const AppStatusBadge(
+                    label: 'Council meeting',
+                    color: AppColors.info,
+                    icon: Icons.videocam_outlined,
+                  ),
+                  const SizedBox(height: 6),
+                  Text(title, style: Theme.of(context).textTheme.titleSmall),
+                  if (scheduled != null) ...[
+                    const SizedBox(height: 4),
+                    AppMeta(
+                      icon: Icons.schedule_rounded,
+                      label: _whenLabel(scheduled, hasTime),
+                    ),
+                  ],
+                ],
+              ),
             ),
-            child: Column(
-              children: [
-                Text(
-                  month,
-                  style: const TextStyle(
-                    fontSize: 9,
-                    color: AppColors.primaryRed,
-                  ),
-                ),
-                Text(
-                  day,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.primaryRed,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  date,
-                  style: const TextStyle(
-                    fontSize: 10,
-                    color: AppColors.lightText,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
+}
+
+String _whenLabel(DateTime date, bool hasTime) {
+  const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  final month = _month(date.toIso8601String());
+  final day =
+      '${days[date.weekday - 1]}, ${month[0]}${month.substring(1).toLowerCase()} '
+      '${date.day}';
+  if (!hasTime) return day;
+  final hour = date.hour % 12 == 0 ? 12 : date.hour % 12;
+  final minute = date.minute.toString().padLeft(2, '0');
+  return '$day · $hour:$minute ${date.hour >= 12 ? 'PM' : 'AM'}';
 }
 
 class _QuickActions extends StatelessWidget {
@@ -519,209 +502,231 @@ class _QuickActions extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final official = MobileApiService.currentUser?['role'] != 'sk_president';
+    // Each shortcut keeps its own tone on the icon and label; boxes stay white.
     final actions = [
       (
-        AppRoutes.moduleManagement,
-        'Create Submission',
-        Icons.check_circle_outline,
-        const Color(0xFFFFE8EA),
+        official ? AppRoutes.reports : AppRoutes.moduleManagement,
+        official ? 'Submit a report' : 'Submission slots',
+        Icons.description_outlined,
+        AppColors.primaryRed,
       ),
+      if (official)
+        (
+          AppRoutes.budget,
+          'Budget reports',
+          Icons.account_balance_wallet_outlined,
+          AppColors.success,
+        ),
       (
         AppRoutes.videoMeetings,
-        'Join Meeting',
-        Icons.video_call,
-        const Color(0xFFEAF2FF),
-      ),
-      (
-        AppRoutes.rankings,
-        'View Rankings',
-        Icons.emoji_events_outlined,
-        const Color(0xFFFFF7D8),
+        'Video meetings',
+        Icons.videocam_outlined,
+        AppColors.info,
       ),
       (
         AppRoutes.announcements,
         'Announcements',
         Icons.campaign_outlined,
-        const Color(0xFFF2F0FF),
+        AppColors.warning,
+      ),
+      (
+        AppRoutes.rankings,
+        'Rankings',
+        Icons.emoji_events_outlined,
+        AppColors.highlight,
       ),
     ];
-
-    return _Panel(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Quick Actions',
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        AppSectionHeading(
+          title: 'Your workspace',
+          action: AppStatusBadge(
+            label: '${actions.length} shortcuts',
+            color: AppColors.primaryRed,
           ),
-          const SizedBox(height: 10),
-          GridView.count(
-            crossAxisCount: 2,
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            crossAxisSpacing: 10,
-            mainAxisSpacing: 10,
-            childAspectRatio: 1.5,
-            children: actions
-                .map(
-                  (action) => InkWell(
-                    onTap: () => onOpen(action.$1),
-                    borderRadius: BorderRadius.circular(10),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: action.$4,
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: Colors.white),
-                      ),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            action.$3,
-                            color: AppColors.primaryRed,
-                            size: 24,
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            action.$2,
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
+        ),
+        const SizedBox(height: 12),
+        // Two per row; an odd last shortcut spans the full width.
+        LayoutBuilder(
+          builder: (context, constraints) {
+            const gap = 10.0;
+            final stacked =
+                (constraints.maxWidth - gap) / 2 < 150 ||
+                MediaQuery.textScalerOf(context).scale(14) > 19;
+            return Column(
+              children: [
+                for (var i = 0; i < actions.length; i += 2) ...[
+                  if (i > 0) const SizedBox(height: gap),
+                  IntrinsicHeight(
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        for (final (index, action)
+                            in actions.skip(i).take(2).indexed) ...[
+                          if (index > 0) const SizedBox(width: gap),
+                          Expanded(
+                            child: _ShortcutTile(
+                              label: action.$2,
+                              icon: action.$3,
+                              color: action.$4,
+                              stacked: stacked,
+                              onTap: () => onOpen(action.$1),
                             ),
                           ),
                         ],
-                      ),
+                      ],
                     ),
                   ),
-                )
-                .toList(),
-          ),
-        ],
-      ),
+                ],
+              ],
+            );
+          },
+        ),
+      ],
     );
   }
 }
 
-class _SharedWallComposer extends StatefulWidget {
-  final bool isPosting;
-  final Future<void> Function(String content, String category) onPost;
+/// A white shortcut box. The icon sits beside the label, or above it on
+/// narrow screens and at large text sizes.
+class _ShortcutTile extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final Color color;
+  final bool stacked;
+  final VoidCallback onTap;
 
-  const _SharedWallComposer({required this.isPosting, required this.onPost});
-
-  @override
-  State<_SharedWallComposer> createState() => _SharedWallComposerState();
-}
-
-class _SharedWallComposerState extends State<_SharedWallComposer> {
-  final TextEditingController _controller = TextEditingController();
-  String _category = 'update';
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
+  const _ShortcutTile({
+    required this.label,
+    required this.icon,
+    required this.color,
+    required this.stacked,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return _Panel(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Row(
-            children: [
-              Icon(Icons.forum_outlined, color: AppColors.primaryRed, size: 18),
-              SizedBox(width: 8),
-              Text(
-                'Shared Wall',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
-              ),
-            ],
+    return DecoratedBox(
+      decoration: AppDecorations.surface(radius: 16),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(16),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: stacked
+                ? const EdgeInsets.fromLTRB(6, 14, 6, 12)
+                : const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+            child: stacked
+                ? Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      AppIconTile(icon: icon, color: color, size: 21),
+                      const SizedBox(height: 10),
+                      _ShortcutLabel(label, color: color, centered: true),
+                    ],
+                  )
+                : Row(
+                    children: [
+                      AppIconTile(icon: icon, color: color, size: 20),
+                      const SizedBox(width: 10),
+                      Expanded(child: _ShortcutLabel(label, color: color)),
+                    ],
+                  ),
           ),
-          const SizedBox(height: 10),
-          TextField(
-            controller: _controller,
-            minLines: 2,
-            maxLines: 4,
-            decoration: InputDecoration(
-              hintText: 'Share an update...',
-              filled: true,
-              fillColor: AppColors.softPink,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-                borderSide: const BorderSide(color: AppColors.borderPink),
+        ),
+      ),
+    );
+  }
+}
+
+/// Multi-word labels wrap; single long words shrink instead of splitting.
+class _ShortcutLabel extends StatelessWidget {
+  final String label;
+  final Color color;
+  final bool centered;
+  const _ShortcutLabel(
+    this.label, {
+    required this.color,
+    this.centered = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final style = TextStyle(
+      fontSize: 13,
+      height: 1.3,
+      fontWeight: FontWeight.w800,
+      color: color,
+    );
+    if (label.contains(' ')) {
+      return Text(
+        label,
+        textAlign: centered ? TextAlign.center : TextAlign.start,
+        style: style,
+      );
+    }
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      alignment: centered ? Alignment.center : AlignmentDirectional.centerStart,
+      child: Text(label, maxLines: 1, style: style),
+    );
+  }
+}
+
+class _SharedWallComposer extends StatelessWidget {
+  final VoidCallback onOpen;
+  const _SharedWallComposer({required this.onOpen});
+
+  @override
+  Widget build(BuildContext context) {
+    final user = MobileApiService.currentUser ?? {};
+    final name = [
+      user['first_name'],
+      user['last_name'],
+    ].where((p) => p != null).join(' ');
+    return AppSurface(
+      padding: const EdgeInsets.fromLTRB(12, 12, 6, 12),
+      child: Row(
+        children: [
+          CommunityAvatar(
+            name: name,
+            photoUrl: user['profile_pic_url']?.toString(),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Material(
+              color: AppColors.field,
+              borderRadius: BorderRadius.circular(24),
+              child: InkWell(
+                onTap: onOpen,
+                borderRadius: BorderRadius.circular(24),
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  child: Text(
+                    'Share an update with your council…',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: AppColors.lightText,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
               ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-                borderSide: const BorderSide(color: AppColors.borderPink),
-              ),
-              contentPadding: const EdgeInsets.all(12),
             ),
           ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: DropdownButtonFormField<String>(
-                  initialValue: _category,
-                  decoration: InputDecoration(
-                    filled: true,
-                    fillColor: Colors.white,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 8,
-                    ),
-                  ),
-                  items: const [
-                    DropdownMenuItem(value: 'update', child: Text('Update')),
-                    DropdownMenuItem(
-                      value: 'announcement',
-                      child: Text('Announcement'),
-                    ),
-                    DropdownMenuItem(value: 'event', child: Text('Event')),
-                    DropdownMenuItem(
-                      value: 'accomplishment',
-                      child: Text('Accomplishment'),
-                    ),
-                  ],
-                  onChanged: widget.isPosting
-                      ? null
-                      : (value) {
-                          setState(() => _category = value ?? 'update');
-                        },
-                ),
-              ),
-              const SizedBox(width: 10),
-              ElevatedButton.icon(
-                onPressed: widget.isPosting ? null : _submit,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primaryRed,
-                  foregroundColor: Colors.white,
-                  minimumSize: const Size(92, 48),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-                icon: const Icon(Icons.send, size: 16),
-                label: Text(widget.isPosting ? 'Posting' : 'Post'),
-              ),
-            ],
+          IconButton(
+            tooltip: 'Create post',
+            onPressed: onOpen,
+            icon: const Icon(Icons.edit_square, color: AppColors.primaryRed),
           ),
         ],
       ),
     );
-  }
-
-  Future<void> _submit() async {
-    final content = _controller.text.trim();
-    if (content.isEmpty) return;
-
-    await widget.onPost(content, _category);
-    if (mounted) _controller.clear();
   }
 }
 
@@ -729,7 +734,7 @@ class _FeedSection extends StatelessWidget {
   final int activeTab;
   final ValueChanged<int> onTabSelected;
   final List<Map<String, dynamic>> posts;
-  final ValueChanged<Map<String, dynamic>> onLike;
+  final Future<void> Function(Map<String, dynamic>) onLike;
 
   const _FeedSection({
     required this.activeTab,
@@ -742,236 +747,42 @@ class _FeedSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      color: Colors.white,
-      child: Column(
-        children: [
-          Container(
-            height: 38,
-            color: const Color(0xFFF10612),
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              itemBuilder: (context, index) {
-                final active = index == activeTab;
-                return GestureDetector(
-                  onTap: () => onTabSelected(index),
-                  child: Container(
-                    alignment: Alignment.center,
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    color: active
-                        ? const Color(0xFFFFC107)
-                        : Colors.transparent,
-                    child: Text(
-                      tabs[index],
-                      style: TextStyle(
-                        color: active ? AppColors.primaryRed : Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 10,
-                      ),
-                    ),
-                  ),
-                );
-              },
-              separatorBuilder: (context, index) => const SizedBox(width: 4),
-              itemCount: tabs.length,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 20, 16, 10),
+          child: AppSectionHeading(
+            title: 'Community updates',
+            action: AppStatusBadge(
+              label: '${posts.length} ${posts.length == 1 ? 'post' : 'posts'}',
+              color: AppColors.info,
             ),
           ),
-          if (posts.isEmpty)
-            const Padding(
-              padding: EdgeInsets.all(24),
-              child: Text(
-                'No posts yet',
-                style: TextStyle(color: AppColors.lightText),
-              ),
-            )
-          else
-            ...posts.map((post) => _PostCard(row: post, onLike: onLike)),
-        ],
-      ),
-    );
-  }
-}
-
-class _PostCard extends StatelessWidget {
-  final Map<String, dynamic> row;
-  final ValueChanged<Map<String, dynamic>> onLike;
-
-  const _PostCard({required this.row, required this.onLike});
-
-  @override
-  Widget build(BuildContext context) {
-    final title = row['author_name']?.toString() ?? 'SK 360 User';
-    final tag = row['title']?.toString() ?? 'Update';
-    final content = row['content']?.toString() ?? '';
-    final date = row['created_at']?.toString() ?? '';
-    final likes = row['likes_count']?.toString() ?? '0';
-    final liked =
-        row['liked_by_current_user'] == true ||
-        row['liked_by_current_user'] == 1;
-
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        border: Border(bottom: BorderSide(color: Color(0xFFEDEDED))),
-      ),
-      child: Column(
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const CircleAvatar(
-                radius: 16,
-                backgroundColor: Color(0xFFEAF2FF),
-                child: Icon(Icons.person, size: 18, color: Color(0xFF6B8DCC)),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            title,
-                            style: const TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 7,
-                            vertical: 3,
-                          ),
-                          decoration: BoxDecoration(
-                            color: AppColors.softPink,
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Text(
-                            tag,
-                            style: const TextStyle(
-                              color: AppColors.primaryRed,
-                              fontSize: 8,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      date,
-                      style: const TextStyle(
-                        fontSize: 9,
-                        color: AppColors.lightText,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      content,
-                      style: const TextStyle(fontSize: 10, height: 1.35),
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        InkWell(
-                          onTap: () => onLike(row),
-                          borderRadius: BorderRadius.circular(6),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 2,
-                              vertical: 2,
-                            ),
-                            child: Row(
-                              children: [
-                                Icon(
-                                  liked
-                                      ? Icons.thumb_up
-                                      : Icons.thumb_up_outlined,
-                                  size: 14,
-                                  color: liked
-                                      ? AppColors.primaryRed
-                                      : AppColors.lightText,
-                                ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  likes,
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    color: liked
-                                        ? AppColors.primaryRed
-                                        : AppColors.lightText,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        const Icon(
-                          Icons.chat_bubble_outline,
-                          size: 14,
-                          color: AppColors.lightText,
-                        ),
-                        const SizedBox(width: 4),
-                        const Text(
-                          '0',
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: AppColors.lightText,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        const Icon(
-                          Icons.share_outlined,
-                          size: 14,
-                          color: AppColors.lightText,
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ],
+        ),
+        AppFilterPills(
+          labels: tabs,
+          selectedIndex: activeTab,
+          onSelected: onTabSelected,
+        ),
+        const SizedBox(height: 14),
+        if (posts.isEmpty)
+          const AppEmptyState(
+            icon: Icons.forum_outlined,
+            title: 'No updates here yet',
+            message: 'Share a council update above or choose another category.',
+          )
+        else
+          ...posts.map(
+            (post) => CommunityPostCard(
+              key: ValueKey(post['announcement_id']),
+              post: post,
+              onLike: () => onLike(post),
+            ),
           ),
-        ],
-      ),
+      ],
     );
   }
-}
-
-class _Panel extends StatelessWidget {
-  final Widget child;
-
-  const _Panel({required this.child});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.08),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: child,
-    );
-  }
-}
-
-String _day(String value) {
-  final date = DateTime.tryParse(value);
-  return date == null ? '--' : date.day.toString().padLeft(2, '0');
 }
 
 String _month(String value) {

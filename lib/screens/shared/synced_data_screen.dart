@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../../services/mobile_api_service.dart';
 import '../../ui/app_ui.dart';
 import '../../widgets/president_components.dart';
+import '../../widgets/community_post.dart';
+import 'create_post_screen.dart';
 
 class SyncedDataScreen extends StatefulWidget {
   final String title;
@@ -27,6 +29,7 @@ class SyncedDataScreen extends StatefulWidget {
 class _SyncedDataScreenState extends State<SyncedDataScreen> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   bool _isLoading = false;
+  String? _loadError;
 
   @override
   void initState() {
@@ -47,18 +50,20 @@ class _SyncedDataScreenState extends State<SyncedDataScreen> {
         onItemSelected: _handleNavSelection,
       ),
       floatingActionButton: widget.allowCreatePost && _canCreatePost
-          ? FloatingActionButton(
+          ? FloatingActionButton.extended(
               backgroundColor: AppColors.primaryRed,
               foregroundColor: Colors.white,
               onPressed: _showCreatePostDialog,
-              child: const Icon(Icons.add),
+              icon: const Icon(Icons.add),
+              label: const Text('New post'),
             )
           : null,
       body: SafeArea(
         child: RefreshIndicator(
           onRefresh: _refresh,
           child: ListView(
-            padding: const EdgeInsets.only(bottom: 24),
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.only(bottom: 96),
             children: [
               PresidentHeader(
                 leading: PresidentHeaderLeading.menu,
@@ -66,36 +71,59 @@ class _SyncedDataScreenState extends State<SyncedDataScreen> {
                 title: widget.title,
                 subtitle: widget.subtitle,
               ),
-              if (_isLoading) const LinearProgressIndicator(minHeight: 3),
-              const SizedBox(height: 20),
+              if (_isLoading) const AppLoadingIndicator(),
+              if (_loadError != null)
+                AppEmptyState(
+                  icon: Icons.cloud_off_outlined,
+                  title: 'Unable to refresh',
+                  message:
+                      'Check your connection and try again. Previously loaded records may still be shown.',
+                  onAction: _refresh,
+                ),
+              AppPageIntro(
+                eyebrow: widget.dataKey == 'wall_posts'
+                    ? 'Live feed'
+                    : widget.subtitle,
+                eyebrowIcon: widget.icon,
+                title: widget.title,
+                subtitle:
+                    'Official advisories, council updates, and public notices.',
+              ),
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
+                padding: const EdgeInsets.fromLTRB(16, 22, 16, 0),
                 child: _HeaderCard(
-                  title: widget.title,
+                  title: widget.dataKey == 'wall_posts'
+                      ? 'Latest updates'
+                      : widget.title,
                   subtitle:
-                      '${rows.length} synced item${rows.length == 1 ? '' : 's'}',
+                      '${rows.length} published update${rows.length == 1 ? '' : 's'}',
                   icon: widget.icon,
                 ),
               ),
-              const SizedBox(height: 16),
-              if (rows.isEmpty)
+              const SizedBox(height: 14),
+              if (rows.isEmpty && !_isLoading && _loadError == null)
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: _EmptyState(
                     icon: widget.icon,
                     title: 'No ${widget.title.toLowerCase()} yet',
                     message:
-                        'Pull to refresh after data is added in the web app.',
+                        'Published updates will appear here. Pull down to refresh.',
                   ),
                 )
               else
                 ...rows.map(
                   (row) => Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 6,
+                    padding: EdgeInsets.symmetric(
+                      horizontal: widget.dataKey == 'wall_posts' ? 0 : 16,
+                      vertical: widget.dataKey == 'wall_posts' ? 0 : 6,
                     ),
-                    child: _DataCard(row: row),
+                    child: widget.dataKey == 'wall_posts'
+                        ? CommunityPostCard(
+                            post: row,
+                            onLike: () => _likePost(row),
+                          )
+                        : _DataCard(row: row),
                   ),
                 ),
             ],
@@ -132,7 +160,9 @@ class _SyncedDataScreenState extends State<SyncedDataScreen> {
     final source =
         MobileApiService.syncedData?[widget.dataKey] as List<dynamic>? ?? [];
 
-    final rows = source.map((row) => Map<String, dynamic>.from(row as Map)).toList();
+    final rows = source
+        .map((row) => Map<String, dynamic>.from(row as Map))
+        .toList();
 
     if (widget.dataKey == 'wall_posts' || widget.dataKey == 'announcements') {
       rows.sort((a, b) {
@@ -142,14 +172,8 @@ class _SyncedDataScreenState extends State<SyncedDataScreen> {
             .compareTo(aDate ?? DateTime.fromMillisecondsSinceEpoch(0));
         if (dateOrder != 0) return dateOrder;
 
-        final bId = int.tryParse(
-              b['announcement_id']?.toString() ?? '',
-            ) ??
-            0;
-        final aId = int.tryParse(
-              a['announcement_id']?.toString() ?? '',
-            ) ??
-            0;
+        final bId = int.tryParse(b['announcement_id']?.toString() ?? '') ?? 0;
+        final aId = int.tryParse(a['announcement_id']?.toString() ?? '') ?? 0;
         return bId.compareTo(aId);
       });
     }
@@ -158,11 +182,14 @@ class _SyncedDataScreenState extends State<SyncedDataScreen> {
   }
 
   Future<void> _refresh() async {
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _loadError = null;
+    });
     try {
       await MobileApiService.sync();
     } on MobileApiException catch (exception) {
-      if (mounted) _showMessage(exception.message);
+      if (mounted) setState(() => _loadError = exception.message);
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -174,143 +201,33 @@ class _SyncedDataScreenState extends State<SyncedDataScreen> {
   }
 
   Future<void> _showCreatePostDialog() async {
-    await Navigator.push(
+    final posted = await Navigator.push<bool>(
       context,
-      MaterialPageRoute(builder: (_) => const _CreatePostPage()),
+      MaterialPageRoute(
+        builder: (_) => const CreatePostScreen(initialCategory: 'announcement'),
+      ),
     );
-    if (mounted) setState(() {});
+    if (mounted) {
+      setState(() {});
+      if (posted == true) _showMessage('Your post has been published.');
+    }
+  }
+
+  Future<void> _likePost(Map<String, dynamic> row) async {
+    final id = int.tryParse('${row['announcement_id']}');
+    if (id == null) return;
+    try {
+      await MobileApiService.toggleWallLike(id);
+      if (mounted) setState(() {});
+    } on MobileApiException catch (exception) {
+      if (mounted) _showMessage(exception.message);
+    }
   }
 
   void _showMessage(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: AppColors.primaryRed),
-    );
-  }
-}
-
-class _CreatePostPage extends StatefulWidget {
-  const _CreatePostPage();
-
-  @override
-  State<_CreatePostPage> createState() => _CreatePostPageState();
-}
-
-class _CreatePostPageState extends State<_CreatePostPage> {
-  final TextEditingController _controller = TextEditingController();
-  String _category = 'announcement';
-  bool _isSubmitting = false;
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  Future<void> _submit() async {
-    final content = _controller.text.trim();
-    if (content.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Write something before posting.')),
-      );
-      return;
-    }
-
-    setState(() => _isSubmitting = true);
-    try {
-      await MobileApiService.createWallPost(
-        content: content,
-        category: _category,
-      );
-      if (!mounted) return;
-      Navigator.pop(context, true);
-    } on MobileApiException catch (exception) {
-      if (mounted) {
-        setState(() => _isSubmitting = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(exception.message),
-            backgroundColor: AppColors.primaryRed,
-          ),
-        );
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.lightGrayBg,
-      appBar: AppBar(
-        title: const Text('Create Post'),
-        backgroundColor: AppColors.primaryRed,
-        foregroundColor: Colors.white,
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
-          const Text(
-            'Create Post',
-            style: TextStyle(
-              fontSize: 26,
-              fontWeight: FontWeight.bold,
-              color: AppColors.darkGray,
-            ),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Share an announcement or update with the SK community.',
-            style: TextStyle(color: AppColors.lightText),
-          ),
-          const SizedBox(height: 24),
-          DropdownButtonFormField<String>(
-            initialValue: _category,
-            decoration: const InputDecoration(
-              labelText: 'Post type',
-              border: OutlineInputBorder(),
-              filled: true,
-              fillColor: Colors.white,
-            ),
-            items: const [
-              DropdownMenuItem(
-                value: 'announcement',
-                child: Text('Announcement'),
-              ),
-              DropdownMenuItem(value: 'event', child: Text('Event')),
-              DropdownMenuItem(
-                value: 'accomplishment',
-                child: Text('Accomplishment'),
-              ),
-              DropdownMenuItem(value: 'update', child: Text('Update')),
-            ],
-            onChanged: _isSubmitting
-                ? null
-                : (value) => setState(() => _category = value ?? 'announcement'),
-          ),
-          const SizedBox(height: 16),
-          TextField(
-            controller: _controller,
-            enabled: !_isSubmitting,
-            maxLines: 10,
-            decoration: const InputDecoration(
-              hintText: 'Write the post content',
-              alignLabelWithHint: true,
-              border: OutlineInputBorder(),
-              filled: true,
-              fillColor: Colors.white,
-            ),
-          ),
-          const SizedBox(height: 24),
-          FilledButton(
-            onPressed: _isSubmitting ? null : _submit,
-            style: FilledButton.styleFrom(
-              backgroundColor: AppColors.primaryRed,
-              padding: const EdgeInsets.symmetric(vertical: 16),
-            ),
-            child: Text(_isSubmitting ? 'Posting...' : 'Post'),
-          ),
-        ],
-      ),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 }
 
@@ -327,41 +244,10 @@ class _HeaderCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.borderPink),
-      ),
-      child: Row(
-        children: [
-          CircleAvatar(
-            backgroundColor: AppColors.softPink,
-            child: Icon(icon, color: AppColors.primaryRed),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.darkGray,
-                  ),
-                ),
-                Text(
-                  subtitle,
-                  style: const TextStyle(color: AppColors.lightText),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
+    return AppSectionHeading(
+      title: title,
+      icon: Icons.bolt_rounded,
+      action: AppStatusBadge(label: subtitle, color: AppColors.info, dot: true),
     );
   }
 }
@@ -379,35 +265,7 @@ class _EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.borderPink),
-      ),
-      child: Column(
-        children: [
-          Icon(icon, size: 42, color: AppColors.primaryRed),
-          const SizedBox(height: 12),
-          Text(
-            title,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontSize: 17,
-              fontWeight: FontWeight.bold,
-              color: AppColors.darkGray,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            message,
-            textAlign: TextAlign.center,
-            style: const TextStyle(color: AppColors.lightText),
-          ),
-        ],
-      ),
-    );
+    return AppEmptyState(icon: icon, title: title, message: message);
   }
 }
 
@@ -438,31 +296,18 @@ class _DataCard extends StatelessWidget {
       'start_datetime',
     ]);
 
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.borderPink),
-      ),
+    return AppAccentCard(
+      accent: AppColors.primaryRed,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            title.isEmpty ? 'Synced item' : title,
-            style: const TextStyle(
-              fontWeight: FontWeight.bold,
-              color: AppColors.darkGray,
-            ),
+            title.isEmpty ? 'Council update' : title,
+            style: Theme.of(context).textTheme.titleSmall,
           ),
           if (subtitle.isNotEmpty) ...[
             const SizedBox(height: 6),
-            Text(
-              subtitle,
-              maxLines: 3,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(color: AppColors.lightText),
-            ),
+            Text(subtitle, style: Theme.of(context).textTheme.bodySmall),
           ],
         ],
       ),

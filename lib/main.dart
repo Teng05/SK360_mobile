@@ -10,6 +10,7 @@ import 'screens/auth/login_screen.dart';
 import 'screens/auth/reset_password_screen.dart';
 import 'screens/shared/mobile_profile_screen.dart';
 import 'screens/shared/chat_screen.dart';
+import 'screens/shared/notifications_screen.dart';
 import 'screens/shared/official_submission_screen.dart';
 import 'screens/shared/prototype_calendar_screen.dart';
 import 'screens/shared/rankings_screen.dart';
@@ -44,6 +45,7 @@ class MyApp extends StatelessWidget {
       AppRoutes.presidentCalendar: (context) => const PrototypeCalendarScreen(),
       AppRoutes.videoMeetings: (context) => const PresidentMeetingsScreen(),
       AppRoutes.profile: (context) => const MobileProfileScreen(),
+      AppRoutes.notifications: (context) => const NotificationsScreen(),
       AppRoutes.announcements: (context) => const SyncedDataScreen(
         title: 'Announcements',
         subtitle: 'Public posts',
@@ -73,15 +75,12 @@ class MyApp extends StatelessWidget {
 
     return MaterialApp(
       title: 'SK 360° - SK Governance Platform',
-      theme: ThemeData(
-        useMaterial3: true,
-        fontFamily: 'Geist',
-        fontFamilyFallback: const ['Arial', 'Helvetica', 'Segoe UI'],
-      ),
+      theme: AppTheme.light,
       routes: routeBuilders.map(
         (name, builder) => MapEntry(
           name,
-          (context) => homeRoutes.contains(name)
+          (context) =>
+              homeRoutes.contains(name) || name == AppRoutes.notifications
               ? builder(context)
               : BackNavigationGuard(child: builder(context)),
         ),
@@ -120,7 +119,7 @@ class _AppRouteObserver extends NavigatorObserver {
 class BackNavigationGuard extends StatefulWidget {
   final Widget child;
 
-  const BackNavigationGuard({required this.child});
+  const BackNavigationGuard({super.key, required this.child});
 
   @override
   State<BackNavigationGuard> createState() => _BackNavigationGuardState();
@@ -203,7 +202,7 @@ class SplashScreen extends StatefulWidget {
 
 class _SplashScreenState extends State<SplashScreen>
     with SingleTickerProviderStateMixin {
-  static const _minimumDuration = Duration(seconds: 6);
+  static const _minimumDuration = Duration(milliseconds: 650);
   late final AnimationController _progressController;
 
   @override
@@ -258,22 +257,25 @@ class _SplashScreenState extends State<SplashScreen>
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: const [
                   _SplashLogo(),
-                  SizedBox(height: 32),
+                  SizedBox(height: 28),
                   Text(
-              'SK 360°',
+                    'SK 360°',
                     style: TextStyle(
-                      fontSize: 36,
-                      fontWeight: FontWeight.bold,
+                      fontSize: 38,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -1,
                       color: AppColors.darkGray,
                     ),
                   ),
-                  SizedBox(height: 80),
+                  SizedBox(height: 12),
+                  AppEyebrow(label: 'Sangguniang Kabataan'),
+                  SizedBox(height: 14),
                   Text(
-                    'Empowering SK Governance',
+                    'Youth governance. Connected.',
                     style: TextStyle(
                       fontSize: 16,
                       color: AppColors.lightText,
-                      fontWeight: FontWeight.w500,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ],
@@ -288,10 +290,10 @@ class _SplashScreenState extends State<SplashScreen>
                   AnimatedBuilder(
                     animation: _progressController,
                     builder: (context, child) => LinearProgressIndicator(
-                      value: _progressController.value,
+                      value: null,
                       minHeight: 5,
                       borderRadius: BorderRadius.circular(8),
-                      backgroundColor: AppColors.borderPink,
+                      backgroundColor: AppColors.softPink,
                       valueColor: const AlwaysStoppedAnimation<Color>(
                         AppColors.primaryRed,
                       ),
@@ -299,7 +301,7 @@ class _SplashScreenState extends State<SplashScreen>
                   ),
                   const SizedBox(height: 10),
                   const Text(
-                    'Starting your app...',
+                    'Opening your workspace…',
                     style: TextStyle(color: AppColors.lightText, fontSize: 12),
                   ),
                 ],
@@ -318,13 +320,22 @@ class _SplashLogo extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 100,
-      height: 100,
+      width: 108,
+      height: 108,
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: AppColors.primaryRed,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(30),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primaryRed.withValues(alpha: .3),
+            blurRadius: 30,
+            spreadRadius: -6,
+            offset: const Offset(0, 14),
+          ),
+        ],
       ),
-      child: const AppLogo(width: 82, height: 82),
+      child: const AppLogo(),
     );
   }
 }

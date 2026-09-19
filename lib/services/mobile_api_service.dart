@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -8,7 +9,12 @@ class MobileApiService {
   static const String _rememberedEmailKey = 'remembered_email';
   static const String _accessTokenKey = 'access_token';
   static const String _userKey = 'current_user';
-  static const String baseUrl = 'https://sk360lipacity.org/api/mobile';
+  // Android Emulator's alias for the development computer's localhost.
+  // Override for physical devices or a deployed server with --dart-define.
+  static const String baseUrl = String.fromEnvironment(
+    'SK360_API_BASE_URL',
+    defaultValue: 'http://10.0.2.2:8000/api/mobile',
+  );
   static String webUrl(String path) {
     final root = baseUrl.replaceFirst(RegExp(r'/api/mobile$'), '');
     final normalizedPath = path.startsWith('/') ? path : '/$path';
@@ -51,12 +57,22 @@ class MobileApiService {
       requiresAuth: false,
     );
 
-    _accessToken = response['access_token'] as String?;
-    currentUser = response['user'] as Map<String, dynamic>?;
+    final token = response['access_token'];
+    final user = response['user'];
+    if (token is! String || token.isEmpty || user is! Map<String, dynamic>) {
+      throw MobileApiException(
+        'The web server returned an invalid sign-in response.',
+      );
+    }
+
+    _accessToken = token;
+    currentUser = user;
+    syncedData = null;
 
     await _saveSession();
 
-    syncedData = await sync();
+    // The dashboard loads its own data and offers retry if syncing fails.
+    // A failed dashboard refresh must not turn a valid login into a failure.
 
     return response;
   }
@@ -184,11 +200,16 @@ class MobileApiService {
   static Future<Map<String, dynamic>> createWallPost({
     required String content,
     String category = 'update',
+    String visibility = 'public',
   }) async {
     final response = await _request(
       'POST',
       '/wall/posts',
-      body: {'post_content': content, 'post_category': category},
+      body: {
+        'post_content': content,
+        'post_category': category,
+        'visibility': visibility,
+      },
     );
 
     await sync();
@@ -639,54 +660,81 @@ class MobileApiService {
     final client = HttpClient();
 
     try {
-      final request = await client.openUrl(method, uri);
-      request.headers.set(HttpHeaders.acceptHeader, 'application/json');
-      request.headers.set(HttpHeaders.contentTypeHeader, 'application/json');
-
-      if (requiresAuth && _accessToken != null) {
-        request.headers.set(
-          HttpHeaders.authorizationHeader,
-          'Bearer $_accessToken',
-        );
-      }
-
-      if (body != null) {
-        request.write(jsonEncode(body));
-      }
-
-      final response = await request.close();
-      final responseBody = await response.transform(utf8.decoder).join();
-      final decoded = responseBody.isEmpty
-          ? <String, dynamic>{}
-          : jsonDecode(responseBody) as Map<String, dynamic>;
-
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        final errors = decoded['errors'];
-        final detailedMessage = errors is Map
-            ? errors.values
-                  .whereType<List<dynamic>>()
-                  .expand((messages) => messages)
-                  .join(' ')
-            : '';
-
-        throw MobileApiException(
-          detailedMessage.isNotEmpty
-              ? detailedMessage
-              : decoded['message']?.toString() ?? 'Request failed.',
-          statusCode: response.statusCode,
-        );
-      }
-
-      return decoded;
+      return await _sendJsonRequest(
+        client,
+        method,
+        uri,
+        body: body,
+        requiresAuth: requiresAuth,
+      ).timeout(const Duration(seconds: 30));
+    } on TimeoutException {
+      throw MobileApiException(
+        'The web server took too long to respond. Please try again.',
+      );
     } on SocketException {
       throw MobileApiException(
         'Cannot reach the web server. Make sure Laravel is running and your phone is on the same Wi-Fi.',
+      );
+    } on HttpException {
+      throw MobileApiException(
+        'The connection to the web server was interrupted. Please try again.',
       );
     } on FormatException {
       throw MobileApiException('The web server returned an invalid response.');
     } finally {
       client.close(force: true);
     }
+  }
+
+  static Future<Map<String, dynamic>> _sendJsonRequest(
+    HttpClient client,
+    String method,
+    Uri uri, {
+    Map<String, dynamic>? body,
+    required bool requiresAuth,
+  }) async {
+    final request = await client.openUrl(method, uri);
+    request.headers.set(HttpHeaders.acceptHeader, 'application/json');
+    request.headers.set(HttpHeaders.contentTypeHeader, 'application/json');
+
+    if (requiresAuth && _accessToken != null) {
+      request.headers.set(
+        HttpHeaders.authorizationHeader,
+        'Bearer $_accessToken',
+      );
+    }
+
+    if (body != null) {
+      request.write(jsonEncode(body));
+    }
+
+    final response = await request.close();
+    final responseBody = await response.transform(utf8.decoder).join();
+    final decoded = responseBody.isEmpty
+        ? <String, dynamic>{}
+        : jsonDecode(responseBody);
+    if (decoded is! Map<String, dynamic>) {
+      throw const FormatException('Expected a JSON object.');
+    }
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      final errors = decoded['errors'];
+      final detailedMessage = errors is Map
+          ? errors.values
+                .whereType<List<dynamic>>()
+                .expand((messages) => messages)
+                .join(' ')
+          : '';
+
+      throw MobileApiException(
+        detailedMessage.isNotEmpty
+            ? detailedMessage
+            : decoded['message']?.toString() ?? 'Request failed.',
+        statusCode: response.statusCode,
+      );
+    }
+
+    return decoded;
   }
 }
 

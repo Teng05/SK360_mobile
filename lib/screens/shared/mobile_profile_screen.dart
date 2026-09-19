@@ -8,6 +8,7 @@ import '../../routes.dart';
 import '../../services/mobile_api_service.dart';
 import '../../ui/app_ui.dart';
 import '../../widgets/president_components.dart';
+import '../../widgets/community_avatar.dart';
 
 class MobileProfileScreen extends StatefulWidget {
   const MobileProfileScreen({super.key});
@@ -20,13 +21,17 @@ class _MobileProfileScreenState extends State<MobileProfileScreen> {
   @override
   Widget build(BuildContext context) {
     final user = MobileApiService.currentUser ?? {};
-    final name = [
-      user['first_name']?.toString(),
-      user['last_name']?.toString(),
-    ].where((part) => part != null && part.trim().isNotEmpty).join(' ');
-
+    final name = [user['first_name'], user['last_name']]
+        .where((part) => part != null && part.toString().trim().isNotEmpty)
+        .join(' ');
+    final photo = user['profile_pic_url']?.toString();
+    final role = switch (user['role']) {
+      'sk_president' => 'SK Federation President',
+      'sk_chairman' => 'SK Chairman',
+      'sk_secretary' => 'SK Secretary',
+      _ => 'SK official',
+    };
     return Scaffold(
-      backgroundColor: AppColors.lightGrayBg,
       bottomNavigationBar: PresidentBottomNavBar(
         activeItem: PresidentNavItem.profile,
         onItemSelected: (item) => _handleNav(context, item),
@@ -37,72 +42,108 @@ class _MobileProfileScreenState extends State<MobileProfileScreen> {
           children: [
             const PresidentHeader(
               leading: PresidentHeaderLeading.none,
-              title: 'Profile',
-              subtitle: 'Account details',
+              title: 'Your profile',
+              subtitle: 'Account and security',
             ),
-            const SizedBox(height: 20),
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Container(
-                padding: const EdgeInsets.all(18),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: AppColors.borderPink),
-                ),
+              padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
+              child: DecoratedBox(
+                decoration: AppDecorations.surface(),
                 child: Column(
                   children: [
-                    CircleAvatar(
-                      radius: 34,
-                      backgroundColor: AppColors.softPink,
-                      backgroundImage: user['profile_pic_url'] == null
-                          ? null
-                          : NetworkImage(user['profile_pic_url'].toString()),
-                      child: user['profile_pic_url'] == null
-                          ? const Icon(
-                              Icons.person,
-                              color: AppColors.primaryRed,
-                              size: 34,
-                            )
-                          : null,
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      name.isEmpty ? 'SK 360 User' : name,
-                      style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.darkGray,
+                    Container(
+                      height: 64,
+                      decoration: const BoxDecoration(
+                        color: AppColors.softPink,
+                        borderRadius: BorderRadius.vertical(
+                          top: Radius.circular(AppSpace.radius),
+                        ),
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      user['email']?.toString() ?? '',
-                      style: const TextStyle(color: AppColors.lightText),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      user['barangay_name']?.toString() ?? '',
-                      style: const TextStyle(color: AppColors.lightText),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Transform.translate(
+                            offset: const Offset(0, -34),
+                            child: Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: const BoxDecoration(
+                                color: AppColors.surface,
+                                shape: BoxShape.circle,
+                                boxShadow: AppDecorations.softShadow,
+                              ),
+                              child: CommunityAvatar(
+                                name: name,
+                                photoUrl: photo,
+                                radius: 36,
+                              ),
+                            ),
+                          ),
+                          Transform.translate(
+                            offset: const Offset(0, -22),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  name.isEmpty ? 'SK 360 User' : name,
+                                  style: Theme.of(
+                                    context,
+                                  ).textTheme.headlineSmall,
+                                ),
+                                const SizedBox(height: 8),
+                                AppStatusBadge(
+                                  label: role,
+                                  color: AppColors.primaryRed,
+                                  icon: Icons.verified_rounded,
+                                ),
+                              ],
+                            ),
+                          ),
+                          _InfoRow(
+                            icon: Icons.mail_outline_rounded,
+                            color: AppColors.info,
+                            label: 'Email',
+                            value: user['email']?.toString() ?? '',
+                          ),
+                          const SizedBox(height: 12),
+                          _InfoRow(
+                            icon: Icons.location_city_outlined,
+                            color: AppColors.primaryRed,
+                            label: 'Barangay',
+                            value: user['barangay_name']?.toString() ?? '',
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
               ),
             ),
-            const SizedBox(height: 16),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 24, 16, 12),
+              child: AppSectionHeading(title: 'Account settings'),
+            ),
             _ProfileAction(
               icon: Icons.edit_outlined,
-              label: 'Edit Profile',
+              label: 'Edit profile',
+              caption: 'Name and profile photo',
+              color: AppColors.info,
               onTap: _openEditProfile,
             ),
             _ProfileAction(
               icon: Icons.lock_outline,
-              label: 'Change Password',
+              label: 'Change password',
+              caption: 'Verified by email code',
+              color: AppColors.highlight,
               onTap: _openPasswordPage,
             ),
+            const SizedBox(height: 16),
             _ProfileAction(
               icon: Icons.logout,
-              label: 'Logout',
+              label: 'Sign out',
+              color: AppColors.primaryRed,
               onTap: () async {
                 await MobileApiService.logout();
                 if (context.mounted) {
@@ -155,9 +196,9 @@ class _MobileProfileScreenState extends State<MobileProfileScreen> {
   }
 
   void _showMessage(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: AppColors.primaryRed),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 }
 
@@ -261,8 +302,8 @@ class _EditProfilePageState extends State<_EditProfilePage> {
       backgroundColor: AppColors.lightGrayBg,
       appBar: AppBar(
         title: const Text('Edit Profile'),
-        backgroundColor: AppColors.primaryRed,
-        foregroundColor: Colors.white,
+        backgroundColor: AppColors.surface,
+        foregroundColor: AppColors.darkGray,
       ),
       body: ListView(
         padding: const EdgeInsets.all(20),
@@ -453,8 +494,8 @@ class _ChangePasswordPageState extends State<_ChangePasswordPage> {
       backgroundColor: AppColors.lightGrayBg,
       appBar: AppBar(
         title: Text(_otpSent ? 'Verify Password Change' : 'Change Password'),
-        backgroundColor: AppColors.primaryRed,
-        foregroundColor: Colors.white,
+        backgroundColor: AppColors.surface,
+        foregroundColor: AppColors.darkGray,
       ),
       body: ListView(
         padding: const EdgeInsets.all(20),
@@ -557,67 +598,102 @@ class _ProfileInput extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return TextField(
+    return AppInputField(
+      label: hint,
+      hintText: obscureText ? 'Enter password' : hint,
       controller: controller,
-      obscureText: obscureText,
-      keyboardType: keyboardType,
+      isPassword: obscureText,
+      keyboardType: keyboardType ?? TextInputType.text,
       textInputAction: textInputAction,
       textCapitalization: textCapitalization,
       maxLength: maxLength,
       onSubmitted: onSubmitted,
-      decoration: InputDecoration(
-        hintText: hint,
-        filled: true,
-        fillColor: Colors.white,
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 18,
-        ),
-        counterText: '',
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: AppColors.borderPink),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: AppColors.primaryRed, width: 1.5),
-        ),
-      ),
     );
   }
+}
+
+class _InfoRow extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final String label;
+  final String value;
+
+  const _InfoRow({
+    required this.icon,
+    required this.color,
+    required this.label,
+    required this.value,
+  });
+
+  @override
+  Widget build(BuildContext context) => Row(
+    children: [
+      AppIconTile(icon: icon, color: color, size: 18),
+      const SizedBox(width: 12),
+      Expanded(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(label, style: Theme.of(context).textTheme.labelSmall),
+            const SizedBox(height: 1),
+            Text(
+              value.isEmpty ? 'Not provided' : value,
+              style: Theme.of(context).textTheme.titleSmall,
+            ),
+          ],
+        ),
+      ),
+    ],
+  );
 }
 
 class _ProfileAction extends StatelessWidget {
   final IconData icon;
   final String label;
+  final String? caption;
+  final Color color;
   final VoidCallback onTap;
 
   const _ProfileAction({
     required this.icon,
     required this.label,
     required this.onTap,
+    this.caption,
+    this.color = AppColors.primaryRed,
   });
 
   @override
   Widget build(BuildContext context) {
+    final destructive = icon == Icons.logout;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
-      child: ListTile(
-        onTap: onTap,
-        tileColor: Colors.white,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
-          side: const BorderSide(color: AppColors.borderPink),
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+      child: DecoratedBox(
+        decoration: AppDecorations.surface(
+          color: destructive ? AppColors.softPink : AppColors.surface,
         ),
-        leading: Icon(icon, color: AppColors.primaryRed),
-        title: Text(
-          label,
-          style: const TextStyle(
-            fontWeight: FontWeight.bold,
-            color: AppColors.darkGray,
+        child: Material(
+          color: Colors.transparent,
+          borderRadius: BorderRadius.circular(AppSpace.radius),
+          clipBehavior: Clip.antiAlias,
+          child: ListTile(
+            onTap: onTap,
+            contentPadding: const EdgeInsets.fromLTRB(14, 6, 12, 6),
+            leading: AppIconTile(icon: icon, color: color, size: 19),
+            title: Text(
+              label,
+              style: TextStyle(
+                fontWeight: FontWeight.w700,
+                color: destructive ? AppColors.actionRed : AppColors.darkGray,
+              ),
+            ),
+            subtitle: caption == null ? null : Text(caption!),
+            trailing: Icon(
+              Icons.chevron_right_rounded,
+              size: 22,
+              color: destructive ? AppColors.actionRed : AppColors.lightText,
+            ),
           ),
         ),
-        trailing: const Icon(Icons.chevron_right),
       ),
     );
   }

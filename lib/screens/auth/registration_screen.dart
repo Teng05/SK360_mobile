@@ -38,112 +38,61 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.white,
-      appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(110),
-        child: const SafeArea(
-          child: AppHeader(
-            appName: 'SK 360°',
-            subtitle: 'SK Governance Platform',
-          ),
-        ),
-      ),
-      body: SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+    return AppAuthLayout(
+      title: 'Create your account',
+      subtitle: 'Start with your details and the barangay you serve.',
+      step: 'STEP 1 OF 3 · YOUR DETAILS',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          AppAdaptiveRow(
             children: [
-              const Text(
-                'Create Account',
-                style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.darkGray,
+              Expanded(
+                child: AppInputField(
+                  label: 'First name',
+                  hintText: 'First name',
+                  controller: _firstNameController,
+                  textInputAction: TextInputAction.next,
+                  textCapitalization: TextCapitalization.words,
                 ),
               ),
-              const SizedBox(height: 8),
-              const Text(
-                'Join the SK 360° platform for transparent SK governance',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: AppColors.lightText,
-                  fontWeight: FontWeight.w400,
+              const SizedBox(width: 16),
+              Expanded(
+                child: AppInputField(
+                  label: 'Last name',
+                  hintText: 'Last name',
+                  controller: _lastNameController,
+                  textInputAction: TextInputAction.next,
+                  textCapitalization: TextCapitalization.words,
                 ),
               ),
-              const SizedBox(height: 32),
-              Row(
-                children: [
-                  Expanded(
-                    child: AppInputField(
-                      label: 'First Name',
-                      hintText: 'Enter your first name',
-                      controller: _firstNameController,
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: AppInputField(
-                      label: 'Last Name',
-                      hintText: 'Enter your last name',
-                      controller: _lastNameController,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-              AppInputField(
-                label: 'Email Address',
-                hintText: 'Enter your email',
-                controller: _emailController,
-                keyboardType: TextInputType.emailAddress,
-              ),
-              const SizedBox(height: 20),
-              AppInputField(
-                label: 'Phone Number',
-                hintText: 'Enter your phone number',
-                controller: _phoneController,
-                keyboardType: TextInputType.phone,
-              ),
-              const SizedBox(height: 20),
-              _buildBarangayDropdown(),
-              const SizedBox(height: 32),
-              AppButton(label: 'Continue', onPressed: _continueToPassword),
-              const SizedBox(height: 16),
-              Center(
-                child: GestureDetector(
-                  onTap: () {
-                    Navigator.pushNamed(context, AppRoutes.login);
-                  },
-                  child: RichText(
-                    text: const TextSpan(
-                      children: [
-                        TextSpan(
-                          text: 'Already have an account? ',
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: AppColors.lightText,
-                            fontWeight: FontWeight.w400,
-                          ),
-                        ),
-                        TextSpan(
-                          text: 'Sign In',
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: AppColors.primaryRed,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 20),
             ],
           ),
-        ),
+          const SizedBox(height: 20),
+          AppInputField(
+            label: 'Email address',
+            hintText: 'you@example.com',
+            controller: _emailController,
+            keyboardType: TextInputType.emailAddress,
+            textInputAction: TextInputAction.next,
+          ),
+          const SizedBox(height: 20),
+          AppInputField(
+            label: 'Phone number',
+            hintText: '09XX XXX XXXX',
+            controller: _phoneController,
+            keyboardType: TextInputType.phone,
+          ),
+          const SizedBox(height: 20),
+          _buildBarangayDropdown(),
+          const SizedBox(height: 28),
+          AppButton(label: 'Continue', onPressed: _continueToPassword),
+          const SizedBox(height: 12),
+          TextButton(
+            onPressed: () => Navigator.pushNamed(context, AppRoutes.login),
+            child: const Text('Already have an account? Sign in'),
+          ),
+        ],
       ),
     );
   }
@@ -179,6 +128,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
         ),
         const SizedBox(height: 8),
         DropdownButtonFormField<int>(
+          isExpanded: true,
           initialValue: _selectedBarangayId,
           items: _barangays
               .map(
@@ -200,23 +150,17 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                 ? 'Loading barangays...'
                 : 'Select your barangay',
             filled: true,
-            fillColor: AppColors.softPink,
+            fillColor: AppColors.field,
             border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(
-                color: AppColors.borderPink,
-                width: 1.5,
-              ),
+              borderRadius: BorderRadius.circular(AppSpace.controlRadius),
+              borderSide: const BorderSide(color: AppColors.border, width: 1.5),
             ),
             enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(
-                color: AppColors.borderPink,
-                width: 1.5,
-              ),
+              borderRadius: BorderRadius.circular(AppSpace.controlRadius),
+              borderSide: const BorderSide(color: AppColors.border, width: 1.5),
             ),
             focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(AppSpace.controlRadius),
               borderSide: const BorderSide(
                 color: AppColors.primaryRed,
                 width: 2,
@@ -266,8 +210,8 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
   }
 
   void _showMessage(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: AppColors.primaryRed),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 }

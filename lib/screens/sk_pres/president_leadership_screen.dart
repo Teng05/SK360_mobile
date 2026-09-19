@@ -15,6 +15,7 @@ class PresidentLeadershipScreen extends StatefulWidget {
 class _PresidentLeadershipScreenState extends State<PresidentLeadershipScreen> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   bool _isLoading = false;
+  String? _loadError;
   String _selectedBarangayId = 'all';
   @override
   void initState() {
@@ -43,6 +44,7 @@ class _PresidentLeadershipScreenState extends State<PresidentLeadershipScreen> {
         child: RefreshIndicator(
           onRefresh: _refresh,
           child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.only(bottom: 24),
             children: [
               PresidentHeader(
@@ -54,37 +56,55 @@ class _PresidentLeadershipScreenState extends State<PresidentLeadershipScreen> {
                   if (_isChairman)
                     IconButton(
                       onPressed: _isLoading ? null : _showAddCouncilDialog,
-                      icon: const Icon(Icons.person_add_alt_1, color: Colors.white),
+                      tooltip: 'Add council member',
+                      style: IconButton.styleFrom(
+                        backgroundColor: AppColors.softPink,
+                      ),
+                      icon: const Icon(
+                        Icons.person_add_alt_1_outlined,
+                        color: AppColors.primaryRed,
+                      ),
                     ),
                 ],
               ),
-              if (_isLoading) const LinearProgressIndicator(minHeight: 3),
+              if (_isLoading) const AppLoadingIndicator(),
+              if (_loadError != null)
+                AppEmptyState(
+                  icon: Icons.cloud_off_outlined,
+                  title: 'Unable to refresh',
+                  message:
+                      'Check your connection and try again. Previously loaded records may still be shown.',
+                  onAction: _refresh,
+                ),
+              const AppPageIntro(
+                eyebrow: 'SK council directory',
+                title: 'Leadership',
+                subtitle:
+                    'Executive officers and SK councilors serving each '
+                    'barangay.',
+              ),
               Padding(
-                padding: const EdgeInsets.all(16),
-                child: Row(
+                padding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
+                child: AppMetricGrid(
+                  columns: 3,
                   children: [
-                    Expanded(
-                      child: _SummaryCard(
-                        label: 'Barangays',
-                        value: '${barangays.length}',
-                        icon: Icons.location_city_outlined,
-                      ),
+                    _SummaryCard(
+                      label: 'Barangays',
+                      value: '${barangays.length}',
+                      icon: Icons.location_city_outlined,
+                      color: AppColors.info,
                     ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: _SummaryCard(
-                        label: 'Executives',
-                        value: '${executives.length}',
-                        icon: Icons.verified_user_outlined,
-                      ),
+                    _SummaryCard(
+                      label: 'Executives',
+                      value: '${executives.length}',
+                      icon: Icons.verified_user_outlined,
+                      color: AppColors.primaryRed,
                     ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: _SummaryCard(
-                        label: 'Council',
-                        value: '${councilors.length}',
-                        icon: Icons.groups_outlined,
-                      ),
+                    _SummaryCard(
+                      label: 'Council',
+                      value: '${councilors.length}',
+                      icon: Icons.groups_outlined,
+                      color: AppColors.highlight,
                     ),
                   ],
                 ),
@@ -130,17 +150,20 @@ class _PresidentLeadershipScreenState extends State<PresidentLeadershipScreen> {
         MobileApiService.syncedData?['barangays'] as List<dynamic>? ?? [];
     final currentBarangayId = _currentBarangayId;
 
-    return rows.where((row) {
-      if (!_isLocalOfficial || currentBarangayId.isEmpty) return true;
-      final map = Map<String, dynamic>.from(row as Map);
-      return '${map['barangay_id']}' == currentBarangayId;
-    }).map((row) {
-      final map = Map<String, dynamic>.from(row as Map);
-      return _BarangayOption(
-        id: '${map['barangay_id']}',
-        name: map['barangay_name']?.toString() ?? 'Unknown Barangay',
-      );
-    }).toList()
+    return rows
+        .where((row) {
+          if (!_isLocalOfficial || currentBarangayId.isEmpty) return true;
+          final map = Map<String, dynamic>.from(row as Map);
+          return '${map['barangay_id']}' == currentBarangayId;
+        })
+        .map((row) {
+          final map = Map<String, dynamic>.from(row as Map);
+          return _BarangayOption(
+            id: '${map['barangay_id']}',
+            name: map['barangay_name']?.toString() ?? 'Unknown Barangay',
+          );
+        })
+        .toList()
       ..sort((a, b) => a.name.compareTo(b.name));
   }
 
@@ -150,29 +173,34 @@ class _PresidentLeadershipScreenState extends State<PresidentLeadershipScreen> {
     };
     final rows =
         MobileApiService.syncedData?['leadership_profiles'] as List<dynamic>? ??
-            [];
+        [];
     final currentBarangayId = _currentBarangayId;
 
-    final leaders = rows.map((row) {
-      final map = Map<String, dynamic>.from(row as Map);
-      final barangayId = '${map['barangay_id']}';
-      return _Leader(
-        name: _firstValue(map, ['full_name', 'name'], 'Unnamed official'),
-        position: _positionLabel(_firstValue(map, ['position'], 'SK Councilor')),
-        barangayId: barangayId,
-        barangay: barangayNames[barangayId] ?? 'Unknown Barangay',
-        term: _termLabel(map),
-        status: _firstValue(map, ['status'], 'current'),
-        profilePictureUrl: map['profile_pic_url']?.toString(),
-      );
-    }).where((leader) {
-      if (_isLocalOfficial && currentBarangayId.isNotEmpty) {
-        return leader.barangayId == currentBarangayId;
-      }
+    final leaders = rows
+        .map((row) {
+          final map = Map<String, dynamic>.from(row as Map);
+          final barangayId = '${map['barangay_id']}';
+          return _Leader(
+            name: _firstValue(map, ['full_name', 'name'], 'Unnamed official'),
+            position: _positionLabel(
+              _firstValue(map, ['position'], 'SK Councilor'),
+            ),
+            barangayId: barangayId,
+            barangay: barangayNames[barangayId] ?? 'Unknown Barangay',
+            term: _termLabel(map),
+            status: _firstValue(map, ['status'], 'current'),
+            profilePictureUrl: map['profile_pic_url']?.toString(),
+          );
+        })
+        .where((leader) {
+          if (_isLocalOfficial && currentBarangayId.isNotEmpty) {
+            return leader.barangayId == currentBarangayId;
+          }
 
-      return _selectedBarangayId == 'all' ||
-          leader.barangayId == _selectedBarangayId;
-    }).toList();
+          return _selectedBarangayId == 'all' ||
+              leader.barangayId == _selectedBarangayId;
+        })
+        .toList();
 
     leaders.sort((a, b) {
       final barangayCompare = a.barangay.compareTo(b.barangay);
@@ -184,11 +212,14 @@ class _PresidentLeadershipScreenState extends State<PresidentLeadershipScreen> {
   }
 
   Future<void> _refresh() async {
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _loadError = null;
+    });
     try {
       await MobileApiService.sync();
     } on MobileApiException catch (exception) {
-      if (mounted) _showMessage(exception.message);
+      if (mounted) setState(() => _loadError = exception.message);
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -200,9 +231,9 @@ class _PresidentLeadershipScreenState extends State<PresidentLeadershipScreen> {
   }
 
   void _showMessage(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: AppColors.primaryRed),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _showAddCouncilDialog() async {
@@ -248,6 +279,7 @@ class _PresidentLeadershipScreenState extends State<PresidentLeadershipScreen> {
             }
 
             return AlertDialog(
+              icon: const AppIconTile(icon: Icons.person_add_alt_1_outlined),
               title: const Text('Add SK Councilor'),
               content: SingleChildScrollView(
                 child: Column(
@@ -291,12 +323,8 @@ class _PresidentLeadershipScreenState extends State<PresidentLeadershipScreen> {
                       : () => Navigator.pop(dialogContext),
                   child: const Text('Cancel'),
                 ),
-                ElevatedButton(
+                FilledButton(
                   onPressed: isSaving ? null : submit,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primaryRed,
-                    foregroundColor: Colors.white,
-                  ),
                   child: Text(isSaving ? 'Saving...' : 'Add'),
                 ),
               ],
@@ -334,22 +362,15 @@ class _LocalBarangayBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.borderPink),
-      ),
+      decoration: AppDecorations.surface(color: AppColors.softPink),
       child: Row(
         children: [
-          const Icon(Icons.location_city_outlined, color: AppColors.primaryRed),
-          const SizedBox(width: 10),
+          const AppIconTile(icon: Icons.location_city_outlined, size: 19),
+          const SizedBox(width: 12),
           Expanded(
             child: Text(
               'Barangay $barangayName',
-              style: const TextStyle(
-                color: AppColors.darkGray,
-                fontWeight: FontWeight.bold,
-              ),
+              style: Theme.of(context).textTheme.titleSmall,
             ),
           ),
         ],
@@ -373,14 +394,16 @@ class _BarangayFilter extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.borderPink),
-      ),
+      decoration: AppDecorations.surface(),
       child: DropdownButtonFormField<String>(
+        isExpanded: true,
         initialValue: selectedBarangayId,
-        decoration: _decoration('Select barangay'),
+        decoration: _decoration('Select barangay').copyWith(
+          prefixIcon: const Icon(
+            Icons.location_city_outlined,
+            color: AppColors.primaryRed,
+          ),
+        ),
         items: [
           const DropdownMenuItem(value: 'all', child: Text('All barangays')),
           ...barangays.map(
@@ -412,43 +435,36 @@ class _Section extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppColors.borderPink),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          AppSectionHeading(
+            icon: icon,
+            title: title,
+            action: AppStatusBadge(
+              label: '${leaders.length}',
+              color: AppColors.info,
+            ),
+          ),
+          const SizedBox(height: 12),
+          if (leaders.isEmpty)
+            AppEmptyState(
+              icon: icon,
+              title: emptyText,
+              message: 'Council profiles will appear here when available.',
+            )
+          else
+            Column(
               children: [
-                Icon(icon, color: AppColors.primaryRed),
-                const SizedBox(width: 8),
-                Text(
-                  title,
-                  style: const TextStyle(
-                    color: AppColors.darkGray,
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
+                for (final leader in leaders)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: _LeaderCard(leader: leader),
                   ),
-                ),
               ],
             ),
-            const SizedBox(height: 10),
-            if (leaders.isEmpty)
-              Text(emptyText, style: const TextStyle(color: AppColors.lightText))
-            else
-              ...leaders.map(
-                (leader) => Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 6),
-                  child: _LeaderCard(leader: leader),
-                ),
-              ),
-          ],
-        ),
+        ],
       ),
     );
   }
@@ -461,44 +477,88 @@ class _LeaderCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppColors.softPink,
-        borderRadius: BorderRadius.circular(10),
-      ),
+    final hasPhoto = leader.profilePictureUrl?.isNotEmpty == true;
+    final accent = leader.isExecutive ? AppColors.primaryRed : AppColors.info;
+    final current = leader.status.toLowerCase() == 'current';
+    return AppAccentCard(
+      accent: leader.isExecutive ? AppColors.primaryRed : AppColors.border,
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          CircleAvatar(
-            backgroundColor:
-                leader.isExecutive ? AppColors.primaryRed : const Color(0xFFFFC107),
-            backgroundImage: leader.profilePictureUrl?.isNotEmpty == true
-                ? NetworkImage(leader.profilePictureUrl!)
-                : null,
-            child: leader.profilePictureUrl?.isNotEmpty == true
-                ? null
-                : Text(leader.initials, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          Container(
+            padding: const EdgeInsets.all(2.5),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: leader.isExecutive
+                    ? AppColors.gold
+                    : accent.withValues(alpha: .3),
+                width: 2,
+              ),
+            ),
+            child: CircleAvatar(
+              radius: 26,
+              backgroundColor: accent.withValues(alpha: .1),
+              backgroundImage: hasPhoto
+                  ? NetworkImage(leader.profilePictureUrl!)
+                  : null,
+              child: hasPhoto
+                  ? null
+                  : Text(
+                      leader.initials,
+                      style: TextStyle(
+                        color: accent,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+            ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  leader.name,
-                  style: const TextStyle(
-                    color: AppColors.darkGray,
-                    fontWeight: FontWeight.bold,
+                  leader.position.toUpperCase(),
+                  style: TextStyle(
+                    color: leader.isExecutive
+                        ? AppColors.actionRed
+                        : AppColors.info,
+                    fontSize: 11.5,
+                    letterSpacing: .6,
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
-                const SizedBox(height: 3),
+                const SizedBox(height: 4),
                 Text(
-                  '${leader.position} - Barangay ${leader.barangay}',
-                  style: const TextStyle(color: AppColors.lightText, fontSize: 12),
+                  leader.name,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
-                Text(
-                  'Term: ${leader.term} - ${_readable(leader.status)}',
-                  style: const TextStyle(color: AppColors.lightText, fontSize: 12),
+                const SizedBox(height: 4),
+                AppMeta(
+                  icon: Icons.location_city_outlined,
+                  label: 'Barangay ${leader.barangay}',
+                  color: AppColors.primaryRed,
+                ),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    AppStatusBadge(
+                      label: 'Term ${leader.term}',
+                      color: AppColors.info,
+                      icon: Icons.event_repeat_outlined,
+                    ),
+                    AppStatusBadge(
+                      label: _readable(leader.status),
+                      color: current ? AppColors.success : AppColors.muted,
+                      dot: true,
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -513,43 +573,18 @@ class _SummaryCard extends StatelessWidget {
   final String label;
   final String value;
   final IconData icon;
+  final Color color;
 
   const _SummaryCard({
     required this.label,
     required this.value,
     required this.icon,
+    required this.color,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.borderPink),
-      ),
-      child: Column(
-        children: [
-          Icon(icon, color: AppColors.primaryRed, size: 22),
-          const SizedBox(height: 6),
-          Text(
-            value,
-            style: const TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
-              color: AppColors.darkGray,
-            ),
-          ),
-          Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(color: AppColors.lightText, fontSize: 12),
-          ),
-        ],
-      ),
-    );
+    return AppStatistic(label: label, value: value, icon: icon, color: color);
   }
 }
 
@@ -600,10 +635,7 @@ class _Leader {
 InputDecoration _decoration(String label) {
   return InputDecoration(
     labelText: label,
-    filled: true,
-    fillColor: AppColors.softPink,
-    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
   );
 }
 

@@ -17,6 +17,7 @@ class _PresidentReportsScreenState extends State<PresidentReportsScreen>
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   final TextEditingController _searchController = TextEditingController();
   bool _isLoading = false;
+  String? _loadError;
   String _typeFilter = 'all';
 
   @override
@@ -57,6 +58,7 @@ class _PresidentReportsScreenState extends State<PresidentReportsScreen>
         child: RefreshIndicator(
           onRefresh: _refresh,
           child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.only(bottom: 24),
             children: [
               PresidentHeader(
@@ -65,39 +67,50 @@ class _PresidentReportsScreenState extends State<PresidentReportsScreen>
                 title: 'View Reports',
                 subtitle: 'Submitted documents',
               ),
-              if (_isLoading) const LinearProgressIndicator(minHeight: 3),
+              if (_isLoading) const AppLoadingIndicator(),
+              if (_loadError != null)
+                AppEmptyState(
+                  icon: Icons.cloud_off_outlined,
+                  title: 'Unable to refresh',
+                  message:
+                      'Check your connection and try again. Previously loaded records may still be shown.',
+                  onAction: _refresh,
+                ),
+              const AppPageIntro(
+                eyebrow: 'Federation archive',
+                title: 'View Reports',
+                subtitle:
+                    'Accomplishment and budget documents submitted by '
+                    'barangay councils.',
+              ),
               Padding(
-                padding: const EdgeInsets.all(16),
-                child: Row(
+                padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
+                child: AppMetricGrid(
+                  columns: 3,
                   children: [
-                    Expanded(
-                      child: _SummaryCard(
-                        label: 'Total',
-                        value: '${stats.total}',
-                        icon: Icons.folder_copy_outlined,
-                      ),
+                    _SummaryCard(
+                      label: 'Total',
+                      value: '${stats.total}',
+                      icon: Icons.folder_copy_outlined,
+                      color: AppColors.primaryRed,
                     ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: _SummaryCard(
-                        label: 'Reports',
-                        value: '${stats.accomplishment}',
-                        icon: Icons.receipt_long,
-                      ),
+                    _SummaryCard(
+                      label: 'Reports',
+                      value: '${stats.accomplishment}',
+                      icon: Icons.receipt_long_outlined,
+                      color: AppColors.success,
                     ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: _SummaryCard(
-                        label: 'Budgets',
-                        value: '${stats.budget}',
-                        icon: Icons.account_balance_wallet_outlined,
-                      ),
+                    _SummaryCard(
+                      label: 'Budgets',
+                      value: '${stats.budget}',
+                      icon: Icons.account_balance_wallet_outlined,
+                      color: AppColors.info,
                     ),
                   ],
                 ),
               ),
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
+                padding: const EdgeInsets.fromLTRB(16, 22, 16, 0),
                 child: _Filters(
                   searchController: _searchController,
                   typeFilter: _typeFilter,
@@ -106,24 +119,18 @@ class _PresidentReportsScreenState extends State<PresidentReportsScreen>
                   },
                 ),
               ),
-              const SizedBox(height: 12),
-              if (reports.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.all(24),
-                  child: Center(
-                    child: Text(
-                      'No submitted reports found.',
-                      style: TextStyle(color: AppColors.lightText),
-                    ),
-                  ),
+              const SizedBox(height: 8),
+              if (reports.isEmpty && !_isLoading && _loadError == null)
+                const AppEmptyState(
+                  icon: Icons.description_outlined,
+                  title: 'No reports to show',
+                  message:
+                      'Try a different search or report type. New submissions will appear here.',
                 )
               else
                 ...reports.map(
                   (report) => Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 6,
-                    ),
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
                     child: _ReportCard(
                       report: report,
                       onOpenFile: () => _openSubmittedFile(report),
@@ -142,7 +149,8 @@ class _PresidentReportsScreenState extends State<PresidentReportsScreen>
 
     return _allReports().where((report) {
       final matchesType = _typeFilter == 'all' || report.typeKey == _typeFilter;
-      final matchesSearch = query.isEmpty ||
+      final matchesSearch =
+          query.isEmpty ||
           report.title.toLowerCase().contains(query) ||
           report.typeLabel.toLowerCase().contains(query) ||
           report.method.toLowerCase().contains(query) ||
@@ -166,7 +174,8 @@ class _PresidentReportsScreenState extends State<PresidentReportsScreen>
     final barangays = <String, String>{};
     for (final row in (data['barangays'] as List<dynamic>? ?? [])) {
       final map = Map<String, dynamic>.from(row as Map);
-      barangays['${map['barangay_id']}'] = map['barangay_name']?.toString() ?? '';
+      barangays['${map['barangay_id']}'] =
+          map['barangay_name']?.toString() ?? '';
     }
 
     final items = <_ReportItem>[];
@@ -186,19 +195,22 @@ class _PresidentReportsScreenState extends State<PresidentReportsScreen>
           period: _reportPeriod(map),
           method: _readable(_firstValue(map, ['submission_method'], 'File')),
           status: _firstValue(map, ['status'], 'submitted'),
-          submittedAt: _firstValue(map, ['submitted_at', 'created_at'], 'No date'),
+          submittedAt: _firstValue(map, [
+            'submitted_at',
+            'created_at',
+          ], 'No date'),
           submitter: _submitterLabel(map),
-          role: _firstValue(map, ['role', 'user_role', 'submitted_by_role'], ''),
-          fileLabel: _firstValue(
-            map,
-            [
-              'uploaded_file_name',
-              'report_file_path',
-              'uploaded_file_path',
-              'generated_pdf_path',
-            ],
-            'Report document',
-          ),
+          role: _firstValue(map, [
+            'role',
+            'user_role',
+            'submitted_by_role',
+          ], ''),
+          fileLabel: _firstValue(map, [
+            'uploaded_file_name',
+            'report_file_path',
+            'uploaded_file_path',
+            'generated_pdf_path',
+          ], 'Report document'),
           fileUrl: _documentUrl(map, 'accomplishment_report'),
         ),
       );
@@ -210,20 +222,32 @@ class _PresidentReportsScreenState extends State<PresidentReportsScreen>
         _ReportItem(
           typeKey: 'budget',
           typeLabel: 'Budget Report',
-          title: _firstValue(map, ['title', 'document_type'], 'Budget document'),
+          title: _firstValue(map, [
+            'title',
+            'document_type',
+          ], 'Budget document'),
           barangay: _barangayLabel(map, barangays),
           period: _budgetPeriod(map),
-          method: _readable(_firstValue(map, ['submission_method'], 'Template')),
-          status: _firstValue(map, ['status'], 'submitted'),
-          submittedAt: _firstValue(map, ['submitted_at', 'created_at'], 'No date'),
-          submitter: _submitterLabel(map),
-          role: _firstValue(map, ['role', 'user_role', 'submitted_by_role'], ''),
-          amount: _firstValue(map, ['total_amount'], ''),
-          fileLabel: _firstValue(
-            map,
-            ['uploaded_file_name', 'generated_pdf_path', 'uploaded_file_path'],
-            'Budget document',
+          method: _readable(
+            _firstValue(map, ['submission_method'], 'Template'),
           ),
+          status: _firstValue(map, ['status'], 'submitted'),
+          submittedAt: _firstValue(map, [
+            'submitted_at',
+            'created_at',
+          ], 'No date'),
+          submitter: _submitterLabel(map),
+          role: _firstValue(map, [
+            'role',
+            'user_role',
+            'submitted_by_role',
+          ], ''),
+          amount: _firstValue(map, ['total_amount'], ''),
+          fileLabel: _firstValue(map, [
+            'uploaded_file_name',
+            'generated_pdf_path',
+            'uploaded_file_path',
+          ], 'Budget document'),
           fileUrl: _documentUrl(map, 'budget_report'),
         ),
       );
@@ -236,18 +260,23 @@ class _PresidentReportsScreenState extends State<PresidentReportsScreen>
   _ReportStats _stats(List<_ReportItem> reports) {
     return _ReportStats(
       total: reports.length,
-      accomplishment: reports.where((item) => item.typeKey == 'accomplishment').length,
+      accomplishment: reports
+          .where((item) => item.typeKey == 'accomplishment')
+          .length,
       budget: reports.where((item) => item.typeKey == 'budget').length,
     );
   }
 
   Future<void> _refresh() async {
     if (_isLoading) return;
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _loadError = null;
+    });
     try {
       await MobileApiService.sync();
     } on MobileApiException catch (exception) {
-      if (mounted) _showMessage(exception.message);
+      if (mounted) setState(() => _loadError = exception.message);
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -258,9 +287,9 @@ class _PresidentReportsScreenState extends State<PresidentReportsScreen>
   }
 
   void _showMessage(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: AppColors.primaryRed),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _openSubmittedFile(_ReportItem report) async {
@@ -288,43 +317,25 @@ class _Filters extends StatelessWidget {
     required this.onTypeChanged,
   });
 
+  static const _values = ['all', 'accomplishment', 'budget'];
+
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.borderPink),
-      ),
-      child: Column(
-        children: [
-          TextField(
-            controller: searchController,
-            decoration: _inputDecoration(
-              'Search reports',
-              Icons.search,
-            ),
-          ),
-          const SizedBox(height: 10),
-          DropdownButtonFormField<String>(
-            initialValue: typeFilter,
-            decoration: _fieldDecoration('Filter reports'),
-            items: const [
-              DropdownMenuItem(value: 'all', child: Text('All')),
-              DropdownMenuItem(
-                value: 'accomplishment',
-                child: Text('Report Submissions'),
-              ),
-              DropdownMenuItem(
-                value: 'budget',
-                child: Text('Budget Reports'),
-              ),
-            ],
-            onChanged: onTypeChanged,
-          ),
-        ],
-      ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        AppSearchField(
+          controller: searchController,
+          hintText: 'Search reports, barangays, or periods…',
+        ),
+        const SizedBox(height: 12),
+        AppFilterPills(
+          padding: EdgeInsets.zero,
+          labels: const ['All', 'Report Submissions', 'Budget Reports'],
+          selectedIndex: _values.indexOf(typeFilter).clamp(0, 2),
+          onSelected: (index) => onTypeChanged(_values[index]),
+        ),
+      ],
     );
   }
 }
@@ -333,43 +344,18 @@ class _SummaryCard extends StatelessWidget {
   final String label;
   final String value;
   final IconData icon;
+  final Color color;
 
   const _SummaryCard({
     required this.label,
     required this.value,
     required this.icon,
+    required this.color,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.borderPink),
-      ),
-      child: Column(
-        children: [
-          Icon(icon, color: AppColors.primaryRed, size: 22),
-          const SizedBox(height: 6),
-          Text(
-            value,
-            style: const TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
-              color: AppColors.darkGray,
-            ),
-          ),
-          Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(color: AppColors.lightText, fontSize: 12),
-          ),
-        ],
-      ),
-    );
+    return AppStatistic(label: label, value: value, icon: icon, color: color);
   }
 }
 
@@ -382,29 +368,37 @@ class _ReportCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isBudget = report.typeKey == 'budget';
-    final statusColor = _statusColor(report.status);
-
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.borderPink),
-      ),
+    final typeColor = isBudget ? AppColors.info : AppColors.primaryRed;
+    return AppAccentCard(
+      accent: typeColor,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              AppStatusBadge(
+                label: isBudget ? 'Budget' : 'Accomplishment',
+                color: typeColor,
+              ),
+              AppStatusBadge(
+                label: _readable(report.status),
+                color: _statusColor(report.status),
+                dot: true,
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              CircleAvatar(
-                backgroundColor: isBudget ? const Color(0xFFE8F5E9) : AppColors.softPink,
-                child: Icon(
-                  isBudget
-                      ? Icons.account_balance_wallet_outlined
-                      : Icons.receipt_long,
-                  color: isBudget ? Colors.green : AppColors.primaryRed,
-                ),
+              AppThumbnail(
+                icon: isBudget
+                    ? Icons.account_balance_wallet_outlined
+                    : Icons.receipt_long_outlined,
+                color: typeColor,
+                size: 54,
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -413,73 +407,88 @@ class _ReportCard extends StatelessWidget {
                   children: [
                     Text(
                       report.title,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.darkGray,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
                       ),
                     ),
                     const SizedBox(height: 3),
                     Text(
-                      '${report.typeLabel} - ${report.period}',
-                      style: const TextStyle(
-                        color: AppColors.lightText,
-                        fontSize: 12,
-                      ),
+                      report.period,
+                      style: Theme.of(context).textTheme.bodySmall,
                     ),
                   ],
                 ),
               ),
-              Chip(
-                label: Text(_readable(report.status)),
-                labelStyle: TextStyle(
-                  color: statusColor,
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                ),
-                backgroundColor: statusColor.withValues(alpha: 0.12),
-                side: BorderSide.none,
-                visualDensity: VisualDensity.compact,
-              ),
             ],
           ),
           const SizedBox(height: 12),
-          _Line(icon: Icons.location_on_outlined, text: report.barangay),
-          _Line(icon: Icons.upload_file_outlined, text: report.method),
-          _Line(icon: Icons.schedule_outlined, text: report.submittedAt),
-          if (report.amount.isNotEmpty)
-            _Line(icon: Icons.payments_outlined, text: 'Total amount: ${report.amount}'),
+          Wrap(
+            spacing: 14,
+            runSpacing: 6,
+            children: [
+              AppMeta(
+                icon: Icons.location_on_outlined,
+                label: report.barangay,
+                color: AppColors.primaryRed,
+              ),
+              AppMeta(
+                icon: Icons.upload_file_outlined,
+                label: report.method,
+                color: AppColors.info,
+              ),
+              AppMeta(icon: Icons.schedule_rounded, label: report.submittedAt),
+              if (report.amount.isNotEmpty)
+                AppMeta(
+                  icon: Icons.payments_outlined,
+                  label: 'Total amount: ${report.amount}',
+                  color: AppColors.success,
+                ),
+            ],
+          ),
           if (report.fileUrl.isNotEmpty) ...[
-            const SizedBox(height: 10),
+            const SizedBox(height: 14),
             Material(
-              color: AppColors.softPink,
-              borderRadius: BorderRadius.circular(10),
+              color: Colors.transparent,
               child: InkWell(
                 onTap: onOpenFile,
-                borderRadius: BorderRadius.circular(10),
-                child: Padding(
-                  padding: const EdgeInsets.all(10),
+                borderRadius: BorderRadius.circular(AppSpace.controlRadius),
+                child: Ink(
+                  decoration: AppDecorations.inset(),
+                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
                   child: Row(
                     children: [
-                      const Icon(
-                        Icons.picture_as_pdf_outlined,
-                        color: AppColors.primaryRed,
+                      const AppIconTile(
+                        icon: Icons.picture_as_pdf_outlined,
+                        size: 18,
                       ),
-                      const SizedBox(width: 8),
+                      const SizedBox(width: 12),
                       Expanded(
-                        child: Text(
-                          report.fileLabel,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: AppColors.darkGray,
-                            fontWeight: FontWeight.w600,
-                          ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              report.fileLabel,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 13.5,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const Text(
+                              'Open submitted document',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: AppColors.lightText,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                       const Icon(
-                        Icons.open_in_new,
-                        color: AppColors.primaryRed,
+                        Icons.open_in_new_rounded,
                         size: 18,
+                        color: AppColors.info,
                       ),
                     ],
                   ),
@@ -487,32 +496,6 @@ class _ReportCard extends StatelessWidget {
               ),
             ),
           ],
-        ],
-      ),
-    );
-  }
-}
-
-class _Line extends StatelessWidget {
-  final IconData icon;
-  final String text;
-
-  const _Line({required this.icon, required this.text});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 5),
-      child: Row(
-        children: [
-          Icon(icon, size: 16, color: AppColors.lightText),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              text,
-              style: const TextStyle(color: AppColors.lightText, fontSize: 12),
-            ),
-          ),
         ],
       ),
     );
@@ -563,27 +546,6 @@ class _ReportStats {
   });
 }
 
-InputDecoration _inputDecoration(String hint, IconData icon) {
-  return InputDecoration(
-    hintText: hint,
-    prefixIcon: Icon(icon, color: AppColors.lightText),
-    filled: true,
-    fillColor: AppColors.softPink,
-    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-  );
-}
-
-InputDecoration _fieldDecoration(String label) {
-  return InputDecoration(
-    labelText: label,
-    filled: true,
-    fillColor: AppColors.softPink,
-    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-  );
-}
-
 String _firstValue(
   Map<String, dynamic> row,
   List<String> keys,
@@ -611,11 +573,13 @@ String _barangayLabel(Map<String, dynamic> row, Map<String, String> barangays) {
 }
 
 String _submitterLabel(Map<String, dynamic> row) {
-  final explicit = _firstValue(
-    row,
-    ['submitter_name', 'submitted_by_name', 'user_name', 'author_name', 'name'],
-    '',
-  );
+  final explicit = _firstValue(row, [
+    'submitter_name',
+    'submitted_by_name',
+    'user_name',
+    'author_name',
+    'name',
+  ], '');
   if (explicit.isNotEmpty) return explicit;
 
   final first = _firstValue(row, ['first_name'], '');
@@ -735,12 +699,12 @@ Color _statusColor(String status) {
     case 'submitted':
     case 'recorded':
     case 'approved':
-      return Colors.green;
+      return AppColors.success;
     case 'rejected':
       return AppColors.primaryRed;
     case 'draft':
-      return Colors.blueGrey;
+      return AppColors.warning;
     default:
-      return const Color(0xFFFF9800);
+      return AppColors.highlight;
   }
 }

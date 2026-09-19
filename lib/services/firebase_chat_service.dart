@@ -97,7 +97,10 @@ class FirebaseChatService {
       ...members,
       {'id': currentUserId, 'name': currentUserName},
     ];
-    final memberIds = allMembers.map((member) => member['id']!).toSet().toList();
+    final memberIds = allMembers
+        .map((member) => member['id']!)
+        .toSet()
+        .toList();
     final memberNames = allMembers
         .fold<Map<String, String>>({}, (names, member) {
           names[member['id']!] = member['name']!;
@@ -265,7 +268,8 @@ class ChatRoom {
       type: _fieldString(fields['type']),
       memberIds: _fieldArray(fields['memberIds']),
       memberNames: _fieldArray(fields['memberNames']),
-      createdAt: DateTime.tryParse(_fieldTimestamp(fields['createdAt'])) ??
+      createdAt:
+          DateTime.tryParse(_fieldTimestamp(fields['createdAt'])) ??
           DateTime.fromMillisecondsSinceEpoch(0),
     );
   }
@@ -305,7 +309,8 @@ class ChatMessage {
       senderId: _fieldString(fields['senderId']),
       senderName: _fieldString(fields['senderName']),
       senderRole: _fieldString(fields['senderRole']),
-      createdAt: DateTime.tryParse(_fieldTimestamp(fields['createdAt'])) ??
+      createdAt:
+          DateTime.tryParse(_fieldTimestamp(fields['createdAt'])) ??
           DateTime.fromMillisecondsSinceEpoch(0),
     );
   }

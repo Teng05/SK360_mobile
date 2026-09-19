@@ -40,87 +40,68 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.white,
-      appBar: const PreferredSize(
-        preferredSize: Size.fromHeight(110),
-        child: SafeArea(
-          child: AppHeader(
-            appName: 'SK 360°',
-            subtitle: 'SK Governance Platform',
+    return AppAuthLayout(
+      title: 'Welcome back',
+      subtitle: 'Your council. Your community.\nOne connected workspace.',
+      step: 'YOUTH GOVERNANCE · LIPA CITY',
+      showBack: false,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          AppInputField(
+            label: 'Email address',
+            hintText: 'you@example.com',
+            controller: _emailController,
+            keyboardType: TextInputType.emailAddress,
+            autofillHints: const [AutofillHints.username],
+            textInputAction: TextInputAction.next,
+            enabled: !_isLoading,
           ),
-        ),
-      ),
-      body: SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          const SizedBox(height: 20),
+          AppInputField(
+            label: 'Password',
+            hintText: 'Enter your password',
+            controller: _passwordController,
+            isPassword: true,
+            autofillHints: const [AutofillHints.password],
+            textInputAction: TextInputAction.done,
+            onSubmitted: (_) {
+              if (!_isLoading) _handleLogin();
+            },
+            enabled: !_isLoading,
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              const Text(
-                'Welcome Back',
-                style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.darkGray,
-                ),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Sign in to access your SK 360° dashboard',
-                style: TextStyle(fontSize: 14, color: AppColors.lightText),
-              ),
-              const SizedBox(height: 32),
-              AppInputField(
-                label: 'Email Address',
-                hintText: 'Enter your email',
-                controller: _emailController,
-                keyboardType: TextInputType.emailAddress,
-              ),
-              const SizedBox(height: 20),
-              AppInputField(
-                label: 'Password',
-                hintText: 'Enter your password',
-                controller: _passwordController,
-                isPassword: true,
-              ),
-              const SizedBox(height: 16),
               Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   Checkbox(
                     value: _rememberMe,
-                    activeColor: AppColors.primaryRed,
-                    onChanged: (value) {
-                      setState(() {
-                        _rememberMe = value ?? false;
-                      });
-                    },
+                    onChanged: _isLoading
+                        ? null
+                        : (value) =>
+                              setState(() => _rememberMe = value ?? false),
                   ),
-                  const Text(
-                    'Remember me',
-                    style: TextStyle(fontSize: 14, color: AppColors.darkGray),
-                  ),
-                  const Spacer(),
-                  TextButton(
-                    onPressed: () {
-                      Navigator.pushNamed(context, AppRoutes.resetPassword);
-                    },
-                    style: TextButton.styleFrom(
-                      foregroundColor: AppColors.primaryRed,
-                      padding: EdgeInsets.zero,
-                    ),
-                    child: const Text('Forgot Password?'),
-                  ),
+                  const Flexible(child: Text('Remember email')),
                 ],
               ),
-              const SizedBox(height: 24),
-              AppButton(
-                label: _isLoading ? 'Signing In...' : 'Sign In',
-                onPressed: _isLoading ? () {} : _handleLogin,
+              TextButton(
+                onPressed: () =>
+                    Navigator.pushNamed(context, AppRoutes.resetPassword),
+                child: const Text('Forgot password?'),
               ),
             ],
           ),
-        ),
+          const SizedBox(height: 20),
+          AppButton(
+            label: _isLoading ? 'Signing in…' : 'Sign in',
+            isLoading: _isLoading,
+            onPressed: _handleLogin,
+          ),
+        ],
       ),
     );
   }
@@ -172,9 +153,9 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   void _showMessage(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: AppColors.primaryRed),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   String _homeRouteForRole(String? role) {

@@ -16,6 +16,7 @@ class PresidentMeetingsScreen extends StatefulWidget {
 class _PresidentMeetingsScreenState extends State<PresidentMeetingsScreen> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   bool _isLoading = false;
+  String? _loadError;
 
   Map<String, dynamic> get _data => MobileApiService.syncedData ?? {};
   bool get _canCreate =>
@@ -41,50 +42,70 @@ class _PresidentMeetingsScreenState extends State<PresidentMeetingsScreen> {
         activeItem: null,
         onItemSelected: _handleNavSelection,
       ),
-      floatingActionButton: _canCreate
-          ? FloatingActionButton.extended(
-              backgroundColor: AppColors.primaryRed,
-              foregroundColor: Colors.white,
-              onPressed: _showCreateDialog,
-              icon: const Icon(Icons.add),
-              label: const Text('Create Meeting'),
-            )
-          : null,
       body: SafeArea(
         child: RefreshIndicator(
           onRefresh: _refresh,
           child: ListView(
-            padding: const EdgeInsets.only(bottom: 96),
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.only(bottom: 24),
             children: [
               PresidentHeader(
                 leading: PresidentHeaderLeading.menu,
                 onLeadingTap: () => _scaffoldKey.currentState?.openDrawer(),
                 title: 'Video Meetings',
-                subtitle: 'Create and join web meetings',
+                subtitle: 'Connect with your council',
               ),
-              if (_isLoading) const LinearProgressIndicator(minHeight: 3),
+              if (_isLoading) const AppLoadingIndicator(),
+              if (_loadError != null)
+                AppEmptyState(
+                  icon: Icons.cloud_off_outlined,
+                  title: 'Unable to refresh',
+                  message:
+                      'Check your connection and try again. Previously loaded records may still be shown.',
+                  onAction: _refresh,
+                ),
+              const AppPageIntro(
+                eyebrow: 'Council sessions',
+                eyebrowIcon: Icons.videocam_outlined,
+                title: 'Video Meetings',
+                subtitle: 'Connect with your council, wherever they are.',
+              ),
               Padding(
-                padding: const EdgeInsets.all(16),
-                child: Row(
+                padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
+                child: AppMetricGrid(
                   children: [
-                    Expanded(
-                      child: _StatCard(
-                        label: 'Upcoming',
-                        value: '${upcoming.length}',
-                      ),
+                    _StatCard(
+                      label: 'Upcoming',
+                      value: '${upcoming.length}',
+                      icon: Icons.event_available_outlined,
+                      color: AppColors.primaryRed,
+                      caption: 'Scheduled sessions',
                     ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: _StatCard(label: 'Past', value: '${past.length}'),
+                    _StatCard(
+                      label: 'Past',
+                      value: '${past.length}',
+                      icon: Icons.history_rounded,
+                      color: AppColors.muted,
+                      caption: 'Completed or ended',
                     ),
                   ],
                 ),
               ),
+              if (_canCreate)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 18, 16, 0),
+                  child: AppActionButton(
+                    label: 'Create Meeting',
+                    icon: Icons.video_call_outlined,
+                    onPressed: _showCreateDialog,
+                  ),
+                ),
+              const SizedBox(height: 22),
               _MeetingSection(
                 title: 'Upcoming Meetings',
                 meetings: upcoming,
                 emptyText: _canCreate
-                    ? 'No upcoming meetings yet. Create one using the button below.'
+                    ? 'No upcoming meetings yet. Create one using the button above.'
                     : 'No upcoming meetings yet.',
                 onJoin: _joinMeeting,
                 onEnd: _canCreate ? _endMeeting : null,
@@ -103,11 +124,14 @@ class _PresidentMeetingsScreenState extends State<PresidentMeetingsScreen> {
   }
 
   Future<void> _refresh() async {
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _loadError = null;
+    });
     try {
       await MobileApiService.sync();
     } on MobileApiException catch (exception) {
-      if (mounted) _showMessage(exception.message);
+      if (mounted) setState(() => _loadError = exception.message);
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -124,102 +148,102 @@ class _PresidentMeetingsScreenState extends State<PresidentMeetingsScreen> {
   }
 
   Future<void> _showCreateDialog() async {
-    final titleController = TextEditingController();
-    final agendaController = TextEditingController();
     DateTime date = DateTime.now();
     TimeOfDay time = TimeOfDay.now();
 
     await showDialog<void>(
       context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) {
-          return AlertDialog(
-            title: const Text('Create Meeting'),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextField(
-                    controller: titleController,
-                    decoration: const InputDecoration(
-                      labelText: 'Meeting title',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: agendaController,
-                    maxLines: 3,
-                    decoration: const InputDecoration(
-                      labelText: 'Agenda',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  _PickerTile(
-                    icon: Icons.calendar_today,
-                    label: _dateLabel(date),
-                    onTap: () async {
-                      final picked = await showDatePicker(
-                        context: context,
-                        initialDate: date,
-                        firstDate: DateTime.now().subtract(
-                          const Duration(days: 1),
+      builder: (context) => AppDialogForm(
+        builder: (context, controllers) {
+          final titleController = controllers[0];
+          final agendaController = controllers[1];
+          return StatefulBuilder(
+            builder: (context, setDialogState) {
+              return AlertDialog(
+                icon: const AppIconTile(icon: Icons.video_call_outlined),
+                title: const Text('Create Meeting'),
+                content: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      TextField(
+                        controller: titleController,
+                        decoration: const InputDecoration(
+                          labelText: 'Meeting title',
                         ),
-                        lastDate: DateTime.now().add(const Duration(days: 365)),
-                      );
-                      if (picked != null) {
-                        setDialogState(() => date = picked);
-                      }
-                    },
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: agendaController,
+                        maxLines: 3,
+                        decoration: const InputDecoration(labelText: 'Agenda'),
+                      ),
+                      const SizedBox(height: 12),
+                      _PickerTile(
+                        icon: Icons.calendar_today,
+                        label: _dateLabel(date),
+                        onTap: () async {
+                          final picked = await showDatePicker(
+                            context: context,
+                            initialDate: date,
+                            firstDate: DateTime.now().subtract(
+                              const Duration(days: 1),
+                            ),
+                            lastDate: DateTime.now().add(
+                              const Duration(days: 365),
+                            ),
+                          );
+                          if (picked != null) {
+                            setDialogState(() => date = picked);
+                          }
+                        },
+                      ),
+                      const SizedBox(height: 8),
+                      _PickerTile(
+                        icon: Icons.schedule,
+                        label: time.format(context),
+                        onTap: () async {
+                          final picked = await showTimePicker(
+                            context: context,
+                            initialTime: time,
+                          );
+                          if (picked != null) {
+                            setDialogState(() => time = picked);
+                          }
+                        },
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 8),
-                  _PickerTile(
-                    icon: Icons.schedule,
-                    label: time.format(context),
-                    onTap: () async {
-                      final picked = await showTimePicker(
-                        context: context,
-                        initialTime: time,
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Cancel'),
+                  ),
+                  FilledButton(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppColors.primaryRed,
+                    ),
+                    onPressed: () async {
+                      final title = titleController.text.trim();
+                      if (title.isEmpty) return;
+                      Navigator.pop(context);
+                      await _createMeeting(
+                        title: title,
+                        agenda: agendaController.text.trim(),
+                        date: date,
+                        time: time,
                       );
-                      if (picked != null) {
-                        setDialogState(() => time = picked);
-                      }
                     },
+                    child: const Text('Create'),
                   ),
                 ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Cancel'),
-              ),
-              FilledButton(
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.primaryRed,
-                ),
-                onPressed: () async {
-                  final title = titleController.text.trim();
-                  if (title.isEmpty) return;
-                  Navigator.pop(context);
-                  await _createMeeting(
-                    title: title,
-                    agenda: agendaController.text.trim(),
-                    date: date,
-                    time: time,
-                  );
-                },
-                child: const Text('Create'),
-              ),
-            ],
+              );
+            },
           );
         },
       ),
     );
-
-    titleController.dispose();
-    agendaController.dispose();
   }
 
   Future<void> _createMeeting({
@@ -301,9 +325,9 @@ class _PresidentMeetingsScreenState extends State<PresidentMeetingsScreen> {
   }
 
   void _showMessage(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: AppColors.primaryRed),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 }
 
@@ -324,25 +348,25 @@ class _MeetingSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final upcoming = onEnd != null || title.startsWith('Upcoming');
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
-      child: _Panel(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              title.toUpperCase(),
-              style: const TextStyle(
-                color: Color(0xFF94A3B8),
-                fontSize: 11,
-                letterSpacing: 0.8,
-                fontWeight: FontWeight.w800,
-              ),
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          AppSectionHeading(
+            icon: upcoming ? Icons.event_available_outlined : Icons.history,
+            title: title,
+            action: AppStatusBadge(
+              label: '${meetings.length}',
+              color: upcoming ? AppColors.primaryRed : AppColors.muted,
             ),
-            const SizedBox(height: 12),
-            if (meetings.isEmpty)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 18),
+          ),
+          const SizedBox(height: 12),
+          if (meetings.isEmpty)
+            _Panel(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
                 child: Center(
                   child: Text(
                     emptyText,
@@ -350,20 +374,20 @@ class _MeetingSection extends StatelessWidget {
                     style: const TextStyle(color: AppColors.lightText),
                   ),
                 ),
-              )
-            else
-              ...meetings.map(
-                (meeting) => Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: _MeetingCard(
-                    meeting: meeting,
-                    onJoin: () => onJoin(meeting),
-                    onEnd: onEnd == null ? null : () => onEnd!(meeting),
-                  ),
+              ),
+            )
+          else
+            ...meetings.map(
+              (meeting) => Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: _MeetingCard(
+                  meeting: meeting,
+                  onJoin: () => onJoin(meeting),
+                  onEnd: onEnd == null ? null : () => onEnd!(meeting),
                 ),
               ),
-          ],
-        ),
+            ),
+        ],
       ),
     );
   }
@@ -378,92 +402,105 @@ class _MeetingCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppColors.lightGrayBg,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFECEFF3)),
-      ),
+    final accent = meeting.isActive
+        ? AppColors.success
+        : meeting.isPast
+        ? AppColors.muted.withValues(alpha: .45)
+        : AppColors.primaryRed;
+    final dateColor = meeting.isPast ? AppColors.muted : AppColors.primaryRed;
+    return AppAccentCard(
+      accent: accent,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              CircleAvatar(
-                backgroundColor: AppColors.primaryRed,
-                child: Text(
-                  meeting.initials,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
+              AppDateBlock(date: meeting.scheduledAt, color: dateColor),
+              const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    _StatusChip(
+                      label: meeting.statusLabel,
+                      active: meeting.isActive,
+                    ),
+                    const SizedBox(height: 7),
                     Text(
                       meeting.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.w800),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      meeting.displayDateTime,
-                      style: const TextStyle(
-                        color: AppColors.lightText,
-                        fontSize: 12,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
                       ),
+                    ),
+                    const SizedBox(height: 4),
+                    AppMeta(
+                      icon: Icons.schedule_rounded,
+                      label: meeting.displayDateTime,
+                      color: AppColors.info,
                     ),
                   ],
                 ),
               ),
-              _StatusChip(label: meeting.statusLabel, active: meeting.isActive),
             ],
           ),
           if (meeting.agenda.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            Text(
-              meeting.agenda,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: AppDecorations.inset(radius: 12),
+              child: Text.rich(
+                TextSpan(
+                  children: [
+                    const TextSpan(
+                      text: 'Agenda  ',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.darkGray,
+                      ),
+                    ),
+                    TextSpan(text: meeting.agenda),
+                  ],
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: AppColors.lightText,
+                  fontSize: 13,
+                  height: 1.4,
+                ),
+              ),
             ),
           ],
-          const SizedBox(height: 12),
-          Row(
+          const SizedBox(height: 14),
+          _ActionRow(
             children: [
               Expanded(
-                child: ElevatedButton.icon(
+                child: FilledButton.icon(
                   onPressed: meeting.canJoin ? onJoin : null,
-                  icon: const Icon(Icons.video_call_outlined),
+                  icon: const Icon(Icons.videocam_outlined, size: 20),
                   label: const Text('Join Meeting'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primaryRed,
-                    foregroundColor: Colors.white,
-                    disabledBackgroundColor: const Color(0xFFE5E7EB),
-                    disabledForegroundColor: const Color(0xFF94A3B8),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
+                  style:
+                      AppCardButtonStyle.primary(
+                        color: meeting.isActive
+                            ? AppColors.success
+                            : AppColors.primaryRed,
+                      ).copyWith(
+                        minimumSize: const WidgetStatePropertyAll(Size(48, 46)),
+                      ),
                 ),
               ),
               if (onEnd != null) ...[
                 const SizedBox(width: 8),
                 OutlinedButton(
                   onPressed: onEnd,
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.primaryRed,
-                    side: const BorderSide(color: AppColors.primaryRed),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
+                  style:
+                      AppCardButtonStyle.secondary(
+                        color: AppColors.actionRed,
+                      ).copyWith(
+                        minimumSize: const WidgetStatePropertyAll(Size(48, 46)),
+                      ),
                   child: const Text('End'),
                 ),
               ],
@@ -475,6 +512,23 @@ class _MeetingCard extends StatelessWidget {
   }
 }
 
+/// Keeps Join and End side by side on phones, stacking only when cramped.
+class _ActionRow extends StatelessWidget {
+  final List<Widget> children;
+  const _ActionRow({required this.children});
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      if (constraints.maxWidth >= 300 &&
+          MediaQuery.textScalerOf(context).scale(14) <= 18) {
+        return Row(children: children);
+      }
+      return AppAdaptiveRow(children: children);
+    },
+  );
+}
+
 class _StatusChip extends StatelessWidget {
   final String label;
   final bool active;
@@ -483,21 +537,12 @@ class _StatusChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: active ? const Color(0xFFDFF8EA) : AppColors.softPink,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: active ? const Color(0xFF009E4D) : AppColors.primaryRed,
-          fontSize: 11,
-          fontWeight: FontWeight.w800,
-        ),
-      ),
-    );
+    final color = active
+        ? AppColors.success
+        : label == 'Upcoming'
+        ? AppColors.info
+        : AppColors.muted;
+    return AppStatusBadge(label: label, color: color, dot: true);
   }
 }
 
@@ -516,18 +561,24 @@ class _PickerTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(AppSpace.controlRadius),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
         decoration: BoxDecoration(
-          border: Border.all(color: const Color(0xFFDDE2EA)),
-          borderRadius: BorderRadius.circular(12),
+          color: AppColors.field,
+          border: Border.all(color: AppColors.border),
+          borderRadius: BorderRadius.circular(AppSpace.controlRadius),
         ),
         child: Row(
           children: [
             Icon(icon, size: 18, color: AppColors.primaryRed),
             const SizedBox(width: 10),
-            Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
+            Expanded(
+              child: Text(
+                label,
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+            ),
           ],
         ),
       ),
@@ -538,26 +589,26 @@ class _PickerTile extends StatelessWidget {
 class _StatCard extends StatelessWidget {
   final String label;
   final String value;
+  final IconData icon;
+  final Color color;
+  final String caption;
 
-  const _StatCard({required this.label, required this.value});
+  const _StatCard({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.color,
+    required this.caption,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return _Panel(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: const TextStyle(color: AppColors.lightText, fontSize: 12),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            value,
-            style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900),
-          ),
-        ],
-      ),
+    return AppStatistic(
+      label: label,
+      value: value,
+      icon: icon,
+      color: color,
+      caption: caption,
     );
   }
 }
@@ -569,22 +620,7 @@ class _Panel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFECEFF3)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 16,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
-      child: child,
-    );
+    return AppSurface(child: child);
   }
 }
 

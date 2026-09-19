@@ -10,6 +10,7 @@ class AppRoutes {
   static const String videoMeeting = '/video-meeting';
   static const String videoMeetings = '/video-meetings';
   static const String profile = '/profile';
+  static const String notifications = '/notifications';
   static const String announcements = '/announcements';
   static const String leadershipProfiles = '/leadership-profiles';
   static const String rankings = '/rankings';

@@ -39,105 +39,30 @@ class _VerificationScreenState extends State<VerificationScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final displayEmail = widget.email.trim().isEmpty
-        ? 'sk360@gmail.com'
-        : widget.email.trim();
-
-    return Scaffold(
-      backgroundColor: AppColors.white,
-      appBar: const PreferredSize(
-        preferredSize: Size.fromHeight(110),
-        child: SafeArea(
-          child: AppHeader(
-            appName: 'SK 360°',
-            subtitle: 'SK Governance Platform',
+    return AppAuthLayout(
+      title: 'Check your inbox',
+      subtitle: 'Enter the 6-digit verification code sent to ${widget.email}.',
+      step: 'STEP 3 OF 3 · VERIFICATION',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _buildOtpRow(),
+          const SizedBox(height: 24),
+          AppButton(
+            label: _isLoading ? 'Verifying…' : 'Verify account',
+            isLoading: _isLoading,
+            onPressed: _verifyAccount,
           ),
-        ),
-      ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Verify your Account',
-                  style: TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.darkGray,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Enter the code sent to your registered email or phone',
-                  style: TextStyle(fontSize: 14, color: AppColors.lightText),
-                ),
-                const SizedBox(height: 24),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 8,
-                  ),
-                  decoration: BoxDecoration(
-                    color: AppColors.softPink,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: AppColors.borderPink, width: 1.5),
-                  ),
-                  child: Text(
-                    displayEmail,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.primaryRed,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 32),
-                _buildOtpRow(),
-                const SizedBox(height: 32),
-                AppButton(
-                  label: _isLoading ? 'Verifying...' : 'Verify Account',
-                  onPressed: _isLoading ? () {} : _verifyAccount,
-                ),
-                const SizedBox(height: 16),
-                const Text(
-                  "Didn't receive the code?",
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: AppColors.lightText,
-                    fontWeight: FontWeight.w400,
-                  ),
-                ),
-                TextButton(
-                  onPressed: () {
-                    _resendCode();
-                  },
-                  style: TextButton.styleFrom(
-                    foregroundColor: AppColors.primaryRed,
-                    padding: EdgeInsets.zero,
-                  ),
-                  child: const Text(
-                    'Resend Code',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                ),
-                const SizedBox(height: 80),
-                const Center(
-                  child: Text(
-                    'Empowering SK Governance',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: AppColors.lightText,
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                ),
-              ],
-            ),
+          const SizedBox(height: 16),
+          const Text(
+            'No code yet? Check your spam folder or request another code.',
+            style: TextStyle(color: AppColors.lightText),
           ),
-        ),
+          TextButton(
+            onPressed: _isLoading ? null : _resendCode,
+            child: const Text('Resend code'),
+          ),
+        ],
       ),
     );
   }
@@ -146,8 +71,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: List.generate(6, (index) {
-        return SizedBox(
-          width: 48,
+        return Expanded(
           child: TextField(
             controller: _controllers[index],
             focusNode: _focusNodes[index],
@@ -162,12 +86,14 @@ class _VerificationScreenState extends State<VerificationScreen> {
             ),
             decoration: InputDecoration(
               counterText: '',
+              contentPadding: const EdgeInsets.symmetric(vertical: 16),
+              semanticCounterText: 'Verification digit',
               filled: true,
-              fillColor: AppColors.softPink,
+              fillColor: AppColors.field,
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(14),
                 borderSide: const BorderSide(
-                  color: AppColors.borderPink,
+                  color: AppColors.border,
                   width: 1.5,
                 ),
               ),
@@ -246,8 +172,8 @@ class _VerificationScreenState extends State<VerificationScreen> {
   }
 
   void _showMessage(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: AppColors.primaryRed),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 }

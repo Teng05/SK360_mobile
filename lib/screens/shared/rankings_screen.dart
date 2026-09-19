@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 
 import '../../services/mobile_api_service.dart';
 import '../../ui/app_ui.dart';
@@ -14,6 +15,7 @@ class RankingsScreen extends StatefulWidget {
 class _RankingsScreenState extends State<RankingsScreen> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   bool _isLoading = false;
+  String? _loadError;
   String? _selectedHistoryPeriod;
 
   Map<String, dynamic> get _data => MobileApiService.syncedData ?? {};
@@ -38,8 +40,8 @@ class _RankingsScreenState extends State<RankingsScreen> {
     final selectedPeriod = historyPeriods.contains(_selectedHistoryPeriod)
         ? _selectedHistoryPeriod!
         : historyPeriods.isNotEmpty
-            ? historyPeriods.first
-            : period;
+        ? historyPeriods.first
+        : period;
     final topThree = _historyRankings(history, selectedPeriod).take(3).toList();
 
     return Scaffold(
@@ -56,6 +58,7 @@ class _RankingsScreenState extends State<RankingsScreen> {
         child: RefreshIndicator(
           onRefresh: _refresh,
           child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.only(bottom: 24),
             children: [
               PresidentHeader(
@@ -68,16 +71,32 @@ class _RankingsScreenState extends State<RankingsScreen> {
                 title: 'Rankings',
                 subtitle: period.isEmpty ? 'Barangay leaderboard' : period,
               ),
-              if (_isLoading) const LinearProgressIndicator(minHeight: 3),
-              const SizedBox(height: 18),
-              if (rankings.isEmpty)
+              if (_isLoading) const AppLoadingIndicator(),
+              if (_loadError != null)
+                AppEmptyState(
+                  icon: Icons.cloud_off_outlined,
+                  title: 'Unable to refresh',
+                  message:
+                      'Check your connection and try again. Previously loaded records may still be shown.',
+                  onAction: _refresh,
+                ),
+              AppPageIntro(
+                eyebrow: 'Barangay leaderboard',
+                eyebrowIcon: Icons.emoji_events_outlined,
+                title: 'Rankings',
+                subtitle:
+                    'Top performing councils based on timely submissions, '
+                    'completeness, and participation.',
+              ),
+              const SizedBox(height: 20),
+              if (rankings.isEmpty && !_isLoading && _loadError == null)
                 const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 20),
+                  padding: EdgeInsets.symmetric(horizontal: 16),
                   child: _EmptyRankingState(),
                 )
               else ...[
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: _RankingHistoryDropdown(
                     history: history,
                     selectedPeriod: selectedPeriod,
@@ -86,24 +105,24 @@ class _RankingsScreenState extends State<RankingsScreen> {
                     },
                   ),
                 ),
-                const SizedBox(height: 14),
+                const SizedBox(height: 24),
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: _TopThreeSection(rankings: topThree),
                 ),
-                const SizedBox(height: 14),
+                const SizedBox(height: 24),
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: _LeaderboardPanel(rankings: rankings),
                 ),
-                const SizedBox(height: 14),
+                const SizedBox(height: 16),
                 const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 20),
+                  padding: EdgeInsets.symmetric(horizontal: 16),
                   child: _PointsSystemPanel(),
                 ),
-                const SizedBox(height: 14),
+                const SizedBox(height: 16),
                 const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 20),
+                  padding: EdgeInsets.symmetric(horizontal: 16),
                   child: _BadgesPanel(),
                 ),
               ],
@@ -115,18 +134,14 @@ class _RankingsScreenState extends State<RankingsScreen> {
   }
 
   Future<void> _refresh() async {
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _loadError = null;
+    });
     try {
       await MobileApiService.sync();
     } on MobileApiException catch (exception) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(exception.message),
-            backgroundColor: AppColors.primaryRed,
-          ),
-        );
-      }
+      if (mounted) setState(() => _loadError = exception.message);
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -252,25 +267,122 @@ class _TopThreeSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const _SectionLabel('Top Barangays'),
-        const SizedBox(height: 10),
-        Row(
-          children: [
-            for (var index = 0; index < 3; index++) ...[
-              Expanded(
-                child: _TopRankCard(
-                  item: index < rankings.length ? rankings[index] : null,
-                  place: index + 1,
-                ),
-              ),
-              if (index < 2) const SizedBox(width: 10),
-            ],
-          ],
+        const AppSectionHeading(
+          icon: Icons.military_tech_outlined,
+          title: 'Top barangays',
         ),
+        const SizedBox(height: 12),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final podium =
+                rankings.length == 3 &&
+                constraints.maxWidth >= 300 &&
+                MediaQuery.textScalerOf(context).scale(14) <= 19;
+            if (!podium) {
+              return Column(
+                children: [
+                  for (var i = 0; i < rankings.length; i++)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: _TopRankCard(item: rankings[i], place: i + 1),
+                    ),
+                ],
+              );
+            }
+            return IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  for (final index in [1, 0, 2])
+                    Expanded(
+                      child: Padding(
+                        padding: EdgeInsets.fromLTRB(
+                          4,
+                          index == 0 ? 0 : 26,
+                          4,
+                          0,
+                        ),
+                        child: _PodiumCard(item: rankings[index]),
+                      ),
+                    ),
+                ],
+              ),
+            );
+          },
+        ),
+        if (rankings.isEmpty)
+          const Text(
+            'No results for this period.',
+            style: TextStyle(color: AppColors.lightText),
+          ),
       ],
     );
   }
 }
+
+class _PodiumCard extends StatelessWidget {
+  final _RankingItem item;
+  const _PodiumCard({required this.item});
+
+  @override
+  Widget build(BuildContext context) {
+    final first = item.rank == 1;
+    final accent = _medalColor(item.rank);
+    return Semantics(
+      sortKey: OrdinalSortKey(item.rank.toDouble()),
+      child: Container(
+        padding: EdgeInsets.fromLTRB(8, first ? 22 : 16, 8, 18),
+        decoration:
+            AppDecorations.surface(
+              color: first ? AppColors.highlightSurface : AppColors.surface,
+            ).copyWith(
+              border: Border.all(
+                color: first ? AppColors.gold : AppColors.border,
+                width: first ? 1.5 : 1,
+              ),
+            ),
+        child: Column(
+          children: [
+            AppIconTile(
+              icon: first
+                  ? Icons.emoji_events_rounded
+                  : Icons.workspace_premium_rounded,
+              color: accent,
+              size: first ? 30 : 24,
+              circle: true,
+            ),
+            const SizedBox(height: 10),
+            AppStatusBadge(label: '#${item.rank}', color: accent),
+            const SizedBox(height: 12),
+            Text(
+              item.name,
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.titleSmall,
+            ),
+            const Spacer(),
+            const SizedBox(height: 12),
+            Text(
+              '${item.points}',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                color: first ? AppColors.actionRed : AppColors.darkGray,
+              ),
+            ),
+            Text('Points', style: Theme.of(context).textTheme.bodySmall),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Gold, silver and bronze accents for the top three places.
+Color _medalColor(int rank) => switch (rank) {
+  1 => AppColors.gold,
+  2 => AppColors.muted,
+  3 => AppColors.warning,
+  _ => AppColors.primaryRed,
+};
 
 class _TopRankCard extends StatelessWidget {
   final _RankingItem? item;
@@ -280,65 +392,44 @@ class _TopRankCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = switch (place) {
-      1 => AppColors.primaryRed,
-      2 => const Color(0xFF374151),
-      _ => const Color(0xFF6B7280),
-    };
-
-    return Container(
-      height: 132,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.borderPink),
-      ),
-      child: item == null
-          ? Center(
-              child: Text(
-                '#$place',
-                style: const TextStyle(
-                  color: AppColors.lightText,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            )
-          : Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                CircleAvatar(
-                  radius: 18,
-                  backgroundColor: color,
-                  child: Text(
-                    '#${item!.rank}',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-                const Spacer(),
-                Text(
-                  item!.name,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.darkGray,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  '${item!.points} pts',
-                  style: const TextStyle(
-                    color: AppColors.primaryRed,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ],
+    if (item == null) return const SizedBox.shrink();
+    return AppSurface(
+      child: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: _medalColor(place).withValues(alpha: .12),
+              borderRadius: BorderRadius.circular(12),
             ),
+            child: Text(
+              '#${item!.rank}',
+              style: TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w800,
+                color: Color.lerp(_medalColor(place), AppColors.darkGray, .2),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              item!.name,
+              style: Theme.of(context).textTheme.titleSmall,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            '${item!.points} pts',
+            style: const TextStyle(
+              fontWeight: FontWeight.w700,
+              color: AppColors.primaryRed,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -373,34 +464,24 @@ class _LeaderboardPanelState extends State<_LeaderboardPanel> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const _SectionLabel('Live Leaderboard'),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _searchController,
-            onChanged: (value) => setState(() => _query = value.trim()),
-            decoration: InputDecoration(
-              hintText: 'Search barangay...',
-              prefixIcon: const Icon(Icons.search),
-              suffixIcon: _query.isEmpty
-                  ? null
-                  : IconButton(
-                      onPressed: () {
-                        _searchController.clear();
-                        setState(() => _query = '');
-                      },
-                      icon: const Icon(Icons.clear),
-                    ),
-              filled: true,
-              fillColor: AppColors.lightGrayBg,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide.none,
-              ),
+          AppSectionHeading(
+            icon: Icons.leaderboard_outlined,
+            title: 'Live Leaderboard',
+            action: AppStatusBadge(
+              label:
+                  '${widget.rankings.length} '
+                  '${widget.rankings.length == 1 ? 'barangay' : 'barangays'}',
+              color: AppColors.info,
             ),
           ),
           const SizedBox(height: 12),
+          AppSearchField(
+            controller: _searchController,
+            hintText: 'Search barangay...',
+            onChanged: (value) => setState(() => _query = value.trim()),
+          ),
+          const SizedBox(height: 12),
           SizedBox(
-            height: 520,
             child: filtered.isEmpty
                 ? const Center(
                     child: Text(
@@ -410,9 +491,13 @@ class _LeaderboardPanelState extends State<_LeaderboardPanel> {
                   )
                 : ListView.separated(
                     primary: false,
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
                     itemCount: filtered.length,
-                    separatorBuilder: (context, index) => const SizedBox(height: 10),
-                    itemBuilder: (_, index) => _RankingRow(item: filtered[index]),
+                    separatorBuilder: (context, index) =>
+                        const SizedBox(height: 10),
+                    itemBuilder: (_, index) =>
+                        _RankingRow(item: filtered[index]),
                   ),
           ),
         ],
@@ -428,24 +513,36 @@ class _RankingRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final medal = item.rank <= 3;
     return Container(
       padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppColors.lightGrayBg,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFECEFF3)),
-      ),
+      decoration: AppDecorations.inset(radius: 16),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          CircleAvatar(
-            radius: 20,
-            backgroundColor: AppColors.primaryRed,
+          Container(
+            width: 40,
+            height: 40,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: medal
+                  ? _medalColor(item.rank).withValues(alpha: .14)
+                  : AppColors.surface,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: medal
+                    ? _medalColor(item.rank).withValues(alpha: .3)
+                    : AppColors.border,
+              ),
+            ),
             child: Text(
-              '#${item.rank}',
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
+              '${item.rank}',
+              style: TextStyle(
+                color: medal
+                    ? Color.lerp(_medalColor(item.rank), AppColors.darkGray, .2)
+                    : AppColors.darkGray,
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
               ),
             ),
           ),
@@ -477,11 +574,23 @@ class _RankingRow extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 10),
-                _MetricBar(label: 'On-time', value: item.onTime),
+                _MetricBar(
+                  label: 'On-time',
+                  value: item.onTime,
+                  color: AppColors.primaryRed,
+                ),
                 const SizedBox(height: 6),
-                _MetricBar(label: 'Complete', value: item.completion),
+                _MetricBar(
+                  label: 'Complete',
+                  value: item.completion,
+                  color: AppColors.info,
+                ),
                 const SizedBox(height: 6),
-                _MetricBar(label: 'Engage', value: item.engagement),
+                _MetricBar(
+                  label: 'Engage',
+                  value: item.engagement,
+                  color: AppColors.success,
+                ),
               ],
             ),
           ),
@@ -494,8 +603,13 @@ class _RankingRow extends StatelessWidget {
 class _MetricBar extends StatelessWidget {
   final String label;
   final int value;
+  final Color color;
 
-  const _MetricBar({required this.label, required this.value});
+  const _MetricBar({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -504,10 +618,14 @@ class _MetricBar extends StatelessWidget {
     return Row(
       children: [
         SizedBox(
-          width: 62,
+          width: 78,
           child: Text(
             label,
-            style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+            style: const TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w600,
+              color: AppColors.lightText,
+            ),
           ),
         ),
         Expanded(
@@ -516,18 +634,18 @@ class _MetricBar extends StatelessWidget {
             child: LinearProgressIndicator(
               value: progress,
               minHeight: 7,
-              backgroundColor: const Color(0xFFE5E7EB),
-              valueColor: const AlwaysStoppedAnimation(AppColors.primaryRed),
+              backgroundColor: color.withValues(alpha: .12),
+              valueColor: AlwaysStoppedAnimation(color),
             ),
           ),
         ),
         const SizedBox(width: 8),
         SizedBox(
-          width: 34,
+          width: 44,
           child: Text(
             '$value%',
             textAlign: TextAlign.right,
-            style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+            style: const TextStyle(fontSize: 13, color: AppColors.lightText),
           ),
         ),
       ],
@@ -554,14 +672,10 @@ class _PointsSystemPanel extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Points System',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
-          ),
-          const SizedBox(height: 4),
-          const Text(
-            'How points are earned and deducted',
-            style: TextStyle(color: AppColors.lightText, fontSize: 12),
+          const AppSectionHeading(
+            icon: Icons.stars_outlined,
+            title: 'Points System',
+            subtitle: 'How points are earned and deducted',
           ),
           const SizedBox(height: 14),
           ...rules.map((rule) => _PointRuleTile(rule: rule)),
@@ -592,18 +706,16 @@ class _PointRuleTile extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
             decoration: BoxDecoration(
               color: rule.positive
-                  ? const Color(0xFFDFF8EA)
-                  : const Color(0xFFFFE4EA),
+                  ? AppColors.successSurface
+                  : AppColors.softPink,
               borderRadius: BorderRadius.circular(999),
             ),
             child: Text(
               rule.points,
               style: TextStyle(
-                fontSize: 12,
+                fontSize: 13,
                 fontWeight: FontWeight.w800,
-                color: rule.positive
-                    ? const Color(0xFF009E4D)
-                    : AppColors.primaryRed,
+                color: rule.positive ? AppColors.success : AppColors.primaryRed,
               ),
             ),
           ),
@@ -649,21 +761,21 @@ class _Badge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: AppColors.softPink,
+        color: AppColors.highlightSurface,
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: AppColors.borderPink),
+        border: Border.all(color: AppColors.gold.withValues(alpha: .35)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 16, color: AppColors.primaryRed),
+          Icon(icon, size: 16, color: AppColors.highlight),
           const SizedBox(width: 6),
           Text(
             label,
             style: const TextStyle(
-              fontSize: 12,
+              fontSize: 13,
               fontWeight: FontWeight.w700,
               color: AppColors.darkGray,
             ),
@@ -681,22 +793,7 @@ class _Panel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFECEFF3)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 16,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
-      child: child,
-    );
+    return AppSurface(child: child);
   }
 }
 
@@ -707,15 +804,7 @@ class _SectionLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Text(
-      label.toUpperCase(),
-      style: const TextStyle(
-        color: Color(0xFF94A3B8),
-        fontSize: 11,
-        letterSpacing: 0.8,
-        fontWeight: FontWeight.w800,
-      ),
-    );
+    return AppSectionHeading(title: label);
   }
 }
 
@@ -724,27 +813,11 @@ class _EmptyRankingState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _Panel(
-      child: Column(
-        children: const [
-          Icon(
-            Icons.emoji_events_outlined,
-            size: 42,
-            color: AppColors.lightText,
-          ),
-          SizedBox(height: 12),
-          Text(
-            'No rankings yet',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
-          ),
-          SizedBox(height: 6),
-          Text(
-            'Pull to refresh after rankings are added in the web app.',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: AppColors.lightText),
-          ),
-        ],
-      ),
+    return const AppEmptyState(
+      icon: Icons.emoji_events_outlined,
+      title: 'Rankings are on their way',
+      message:
+          'Barangay results will appear when they are published. Pull down to refresh.',
     );
   }
 }
@@ -798,53 +871,62 @@ class _RankingHistoryPanel extends StatelessWidget {
           const SizedBox(height: 4),
           const Text(
             'Top 3 barangays per month',
-            style: TextStyle(color: AppColors.lightText, fontSize: 12),
+            style: TextStyle(color: AppColors.lightText, fontSize: 13),
           ),
           const SizedBox(height: 10),
           if (history.isEmpty)
-            const Text('No past ranking periods yet.', style: TextStyle(color: AppColors.lightText))
+            const Text(
+              'No past ranking periods yet.',
+              style: TextStyle(color: AppColors.lightText),
+            )
           else
-            ...history.map(
-              (periodEntry) {
-                final rows = (periodEntry['rankings'] as List<dynamic>? ?? [])
-                    .whereType<Map>()
-                    .toList();
-                return ExpansionTile(
-                  tilePadding: EdgeInsets.zero,
-                  title: Text(
-                    _text(periodEntry['period']),
-                    style: const TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                  children: rows.isEmpty
-                      ? [
-                          const Padding(
-                            padding: EdgeInsets.only(bottom: 12),
-                            child: Text('No points recorded.', style: TextStyle(color: AppColors.lightText)),
+            ...history.map((periodEntry) {
+              final rows = (periodEntry['rankings'] as List<dynamic>? ?? [])
+                  .whereType<Map>()
+                  .toList();
+              return ExpansionTile(
+                tilePadding: EdgeInsets.zero,
+                title: Text(
+                  _text(periodEntry['period']),
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+                children: rows.isEmpty
+                    ? [
+                        const Padding(
+                          padding: EdgeInsets.only(bottom: 12),
+                          child: Text(
+                            'No points recorded.',
+                            style: TextStyle(color: AppColors.lightText),
                           ),
-                        ]
-                      : [
-                          for (final row in rows)
-                            ListTile(
-                              dense: true,
-                              contentPadding: EdgeInsets.zero,
-                              leading: CircleAvatar(
-                                radius: 15,
-                                backgroundColor: AppColors.primaryRed,
-                                child: Text(
-                                  '#${_text(row['rank'])}',
-                                  style: const TextStyle(color: Colors.white, fontSize: 11),
+                        ),
+                      ]
+                    : [
+                        for (final row in rows)
+                          ListTile(
+                            dense: true,
+                            contentPadding: EdgeInsets.zero,
+                            leading: CircleAvatar(
+                              radius: 15,
+                              backgroundColor: AppColors.primaryRed,
+                              child: Text(
+                                '#${_text(row['rank'])}',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 13,
                                 ),
                               ),
-                              title: Text(_text(row['barangay_name'])),
-                              trailing: Text(
-                                '${_number(row['total_points'])} pts',
-                                style: const TextStyle(fontWeight: FontWeight.w700),
+                            ),
+                            title: Text(_text(row['barangay_name'])),
+                            trailing: Text(
+                              '${_number(row['total_points'])} pts',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
                               ),
                             ),
-                        ],
-                );
-              },
-            ),
+                          ),
+                      ],
+              );
+            }),
         ],
       ),
     );
@@ -874,32 +956,34 @@ class _RankingHistoryDropdown extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Ranking History',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+          const AppSectionHeading(
+            icon: Icons.history_rounded,
+            title: 'Ranking History',
+            subtitle: 'Select a month to view its top barangays.',
           ),
-          const SizedBox(height: 4),
-          const Text(
-            'Select a month to view its top barangays.',
-            style: TextStyle(color: AppColors.lightText, fontSize: 12),
-          ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 14),
           if (periods.isEmpty)
-            const Text('No ranking periods yet.', style: TextStyle(color: AppColors.lightText))
+            const Text(
+              'No ranking periods yet.',
+              style: TextStyle(color: AppColors.lightText),
+            )
           else
             DropdownButtonFormField<String>(
-              initialValue: periods.contains(selectedPeriod) ? selectedPeriod : null,
               isExpanded: true,
-              decoration: InputDecoration(
+              initialValue: periods.contains(selectedPeriod)
+                  ? selectedPeriod
+                  : null,
+
+              decoration: const InputDecoration(
                 labelText: 'Select month',
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                prefixIcon: Icon(
+                  Icons.calendar_month_outlined,
+                  color: AppColors.primaryRed,
+                ),
               ),
               items: [
                 for (final period in periods)
-                  DropdownMenuItem(
-                    value: period,
-                    child: Text(period),
-                  ),
+                  DropdownMenuItem(value: period, child: Text(period)),
               ],
               onChanged: onChanged,
             ),

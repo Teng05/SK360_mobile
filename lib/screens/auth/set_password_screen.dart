@@ -39,100 +39,47 @@ class _SetPasswordScreenState extends State<SetPasswordScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.white,
-      appBar: const PreferredSize(
-        preferredSize: Size.fromHeight(110),
-        child: SafeArea(
-          child: AppHeader(
-            appName: 'SK 360°',
-            subtitle: 'SK Governance Platform',
+    return AppAuthLayout(
+      title: 'Secure your account',
+      subtitle: 'Choose a strong password to protect your workspace.',
+      step: 'STEP 2 OF 3 · ACCOUNT SECURITY',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          AppInputField(
+            label: 'Password',
+            hintText: 'Create a password',
+            controller: _passwordController,
+            isPassword: true,
+            autofillHints: const [AutofillHints.newPassword],
+            textInputAction: TextInputAction.next,
           ),
-        ),
-      ),
-      body: SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Set Your Password',
-                style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.darkGray,
-                ),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Choose a strong password for your account',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: AppColors.lightText,
-                  fontWeight: FontWeight.w400,
-                ),
-              ),
-              const SizedBox(height: 32),
-              AppInputField(
-                label: 'Password',
-                hintText: 'Create a strong password',
-                controller: _passwordController,
-                isPassword: true,
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Must be at least 8 characters with uppercase, lowercase, and number',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: AppColors.lightText,
-                  fontWeight: FontWeight.w400,
-                ),
-              ),
-              const SizedBox(height: 20),
-              AppInputField(
-                label: 'Confirm Password',
-                hintText: 'Confirm your password',
-                controller: _confirmPasswordController,
-                isPassword: true,
-              ),
-              const SizedBox(height: 32),
-              AppCheckboxAgreement(
-                isChecked: _isAgreed,
-                onChanged: (value) {
-                  setState(() {
-                    _isAgreed = value;
-                  });
-                },
-                text:
-                    'I agree to the Terms of Service and Privacy Policy, and I understand that my account will be subject to role-based access controls for data security.',
-              ),
-              const SizedBox(height: 40),
-              Row(
-                children: [
-                  Expanded(
-                    child: AppButton(
-                      label: 'Back',
-                      onPressed: () {
-                        Navigator.pop(context);
-                      },
-                      isPrimary: false,
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: AppButton(
-                      label: _isLoading ? 'Creating...' : 'Create Account',
-                      onPressed: _isLoading ? () {} : _createAccount,
-                      isPrimary: true,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-            ],
+          const SizedBox(height: 8),
+          const Text(
+            'Use at least 8 characters with uppercase, lowercase, and a number.',
+            style: TextStyle(color: AppColors.lightText, fontSize: 13),
           ),
-        ),
+          const SizedBox(height: 20),
+          AppInputField(
+            label: 'Confirm password',
+            hintText: 'Re-enter your password',
+            controller: _confirmPasswordController,
+            isPassword: true,
+          ),
+          const SizedBox(height: 20),
+          AppCheckboxAgreement(
+            isChecked: _isAgreed,
+            onChanged: (value) => setState(() => _isAgreed = value),
+            text:
+                'I agree to the Terms of Service and Privacy Policy, and understand that account access depends on my role.',
+          ),
+          const SizedBox(height: 24),
+          AppButton(
+            label: _isLoading ? 'Creating account…' : 'Create account',
+            isLoading: _isLoading,
+            onPressed: _createAccount,
+          ),
+        ],
       ),
     );
   }
@@ -197,8 +144,8 @@ class _SetPasswordScreenState extends State<SetPasswordScreen> {
   }
 
   void _showMessage(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: AppColors.primaryRed),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 }
