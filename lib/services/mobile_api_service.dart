@@ -13,7 +13,7 @@ class MobileApiService {
   // Override for physical devices or a deployed server with --dart-define.
   static const String baseUrl = String.fromEnvironment(
     'SK360_API_BASE_URL',
-    defaultValue: 'http://10.0.2.2:8000/api/mobile',
+    defaultValue: 'http://192.168.1.22:8000/api/mobile',
   );
   static String webUrl(String path) {
     final root = baseUrl.replaceFirst(RegExp(r'/api/mobile$'), '');
