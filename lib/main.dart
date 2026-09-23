@@ -189,7 +189,13 @@ class _BackNavigationGuardState extends State<BackNavigationGuard> {
 
   @override
   Widget build(BuildContext context) {
-    return WillPopScope(onWillPop: _handleBack, child: widget.child);
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) _handleBack();
+      },
+      child: widget.child,
+    );
   }
 }
 

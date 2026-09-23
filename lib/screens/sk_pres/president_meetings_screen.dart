@@ -109,6 +109,7 @@ class _PresidentMeetingsScreenState extends State<PresidentMeetingsScreen> {
                     : 'No upcoming meetings yet.',
                 onJoin: _joinMeeting,
                 onEnd: _canCreate ? _endMeeting : null,
+                onEdit: _canCreate ? _showCreateDialog : null,
               ),
               _MeetingSection(
                 title: 'Past Meetings',
@@ -147,9 +148,13 @@ class _PresidentMeetingsScreenState extends State<PresidentMeetingsScreen> {
     return meetings;
   }
 
-  Future<void> _showCreateDialog() async {
-    DateTime date = DateTime.now();
-    TimeOfDay time = TimeOfDay.now();
+  Future<void> _showCreateDialog([_MeetingItem? meeting]) async {
+    DateTime date = meeting?.scheduledAt ?? DateTime.now();
+    TimeOfDay time = meeting == null
+        ? TimeOfDay.now()
+        : TimeOfDay.fromDateTime(meeting.scheduledAt);
+    bool initialized = false;
+    bool isSubmitting = false;
 
     await showDialog<void>(
       context: context,
@@ -157,11 +162,18 @@ class _PresidentMeetingsScreenState extends State<PresidentMeetingsScreen> {
         builder: (context, controllers) {
           final titleController = controllers[0];
           final agendaController = controllers[1];
+          if (!initialized) {
+            titleController.text = meeting?.title ?? '';
+            agendaController.text = meeting?.agenda ?? '';
+            initialized = true;
+          }
           return StatefulBuilder(
             builder: (context, setDialogState) {
               return AlertDialog(
                 icon: const AppIconTile(icon: Icons.video_call_outlined),
-                title: const Text('Create Meeting'),
+                title: Text(
+                  meeting == null ? 'Create Meeting' : 'Edit Meeting',
+                ),
                 content: SingleChildScrollView(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
@@ -186,12 +198,17 @@ class _PresidentMeetingsScreenState extends State<PresidentMeetingsScreen> {
                           final picked = await showDatePicker(
                             context: context,
                             initialDate: date,
-                            firstDate: DateTime.now().subtract(
-                              const Duration(days: 1),
-                            ),
-                            lastDate: DateTime.now().add(
-                              const Duration(days: 365),
-                            ),
+                            firstDate: date.isBefore(DateTime.now())
+                                ? date
+                                : DateTime.now().subtract(
+                                    const Duration(days: 1),
+                                  ),
+                            lastDate:
+                                date.isAfter(
+                                  DateTime.now().add(const Duration(days: 365)),
+                                )
+                                ? date
+                                : DateTime.now().add(const Duration(days: 365)),
                           );
                           if (picked != null) {
                             setDialogState(() => date = picked);
@@ -217,25 +234,44 @@ class _PresidentMeetingsScreenState extends State<PresidentMeetingsScreen> {
                 ),
                 actions: [
                   TextButton(
-                    onPressed: () => Navigator.pop(context),
+                    onPressed: isSubmitting
+                        ? null
+                        : () => Navigator.pop(context),
                     child: const Text('Cancel'),
                   ),
                   FilledButton(
                     style: FilledButton.styleFrom(
                       backgroundColor: AppColors.primaryRed,
                     ),
-                    onPressed: () async {
-                      final title = titleController.text.trim();
-                      if (title.isEmpty) return;
-                      Navigator.pop(context);
-                      await _createMeeting(
-                        title: title,
-                        agenda: agendaController.text.trim(),
-                        date: date,
-                        time: time,
-                      );
-                    },
-                    child: const Text('Create'),
+                    onPressed: isSubmitting
+                        ? null
+                        : () async {
+                            final title = titleController.text.trim();
+                            if (title.isEmpty) {
+                              _showMessage('Enter a meeting title.');
+                              return;
+                            }
+                            setDialogState(() => isSubmitting = true);
+                            final saved = await _saveMeeting(
+                              meetingId: meeting?.id,
+                              title: title,
+                              agenda: agendaController.text.trim(),
+                              date: date,
+                              time: time,
+                            );
+                            if (saved) {
+                              if (context.mounted) Navigator.pop(context);
+                            } else if (context.mounted) {
+                              setDialogState(() => isSubmitting = false);
+                            }
+                          },
+                    child: Text(
+                      isSubmitting
+                          ? 'Saving...'
+                          : meeting == null
+                          ? 'Create'
+                          : 'Save Changes',
+                    ),
                   ),
                 ],
               );
@@ -246,7 +282,8 @@ class _PresidentMeetingsScreenState extends State<PresidentMeetingsScreen> {
     );
   }
 
-  Future<void> _createMeeting({
+  Future<bool> _saveMeeting({
+    int? meetingId,
     required String title,
     required String agenda,
     required DateTime date,
@@ -254,15 +291,34 @@ class _PresidentMeetingsScreenState extends State<PresidentMeetingsScreen> {
   }) async {
     setState(() => _isLoading = true);
     try {
-      await MobileApiService.createMeeting(
-        title: title,
-        agenda: agenda.isEmpty ? null : agenda,
-        meetingDate: date,
-        meetingTime: TimeOfDayData(hour: time.hour, minute: time.minute),
-      );
-      if (mounted) _showMessage('Meeting scheduled successfully.');
+      final meetingTime = TimeOfDayData(hour: time.hour, minute: time.minute);
+      if (meetingId == null) {
+        await MobileApiService.createMeeting(
+          title: title,
+          agenda: agenda.isEmpty ? null : agenda,
+          meetingDate: date,
+          meetingTime: meetingTime,
+        );
+      } else {
+        await MobileApiService.updateMeeting(
+          meetingId: meetingId,
+          title: title,
+          agenda: agenda.isEmpty ? null : agenda,
+          meetingDate: date,
+          meetingTime: meetingTime,
+        );
+      }
+      if (mounted) {
+        _showMessage(
+          meetingId == null
+              ? 'Meeting scheduled successfully.'
+              : 'Meeting updated.',
+        );
+      }
+      return true;
     } on MobileApiException catch (exception) {
       if (mounted) _showMessage(exception.message);
+      return false;
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -337,12 +393,14 @@ class _MeetingSection extends StatelessWidget {
   final String emptyText;
   final ValueChanged<_MeetingItem> onJoin;
   final ValueChanged<_MeetingItem>? onEnd;
+  final ValueChanged<_MeetingItem>? onEdit;
 
   const _MeetingSection({
     required this.title,
     required this.meetings,
     required this.onJoin,
     this.onEnd,
+    this.onEdit,
     this.emptyText = 'No meetings yet.',
   });
 
@@ -384,6 +442,9 @@ class _MeetingSection extends StatelessWidget {
                   meeting: meeting,
                   onJoin: () => onJoin(meeting),
                   onEnd: onEnd == null ? null : () => onEnd!(meeting),
+                  onEdit: onEdit == null || meeting.status != 'scheduled'
+                      ? null
+                      : () => onEdit!(meeting),
                 ),
               ),
             ),
@@ -397,8 +458,14 @@ class _MeetingCard extends StatelessWidget {
   final _MeetingItem meeting;
   final VoidCallback onJoin;
   final VoidCallback? onEnd;
+  final VoidCallback? onEdit;
 
-  const _MeetingCard({required this.meeting, required this.onJoin, this.onEnd});
+  const _MeetingCard({
+    required this.meeting,
+    required this.onJoin,
+    this.onEnd,
+    this.onEdit,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -442,6 +509,12 @@ class _MeetingCard extends StatelessWidget {
                   ],
                 ),
               ),
+              if (onEdit != null)
+                IconButton(
+                  tooltip: 'Edit meeting',
+                  onPressed: onEdit,
+                  icon: const Icon(Icons.edit_outlined),
+                ),
             ],
           ),
           if (meeting.agenda.isNotEmpty) ...[

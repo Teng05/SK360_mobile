@@ -7,7 +7,13 @@ import 'community_avatar.dart';
 class CommunityPostCard extends StatefulWidget {
   final Map<String, dynamic> post;
   final Future<void> Function()? onLike;
-  const CommunityPostCard({super.key, required this.post, this.onLike});
+  final VoidCallback? onEdit;
+  const CommunityPostCard({
+    super.key,
+    required this.post,
+    this.onLike,
+    this.onEdit,
+  });
 
   @override
   State<CommunityPostCard> createState() => _CommunityPostCardState();
@@ -67,8 +73,19 @@ class _CommunityPostCardState extends State<CommunityPostCard> {
                   ),
                   PopupMenuButton<String>(
                     tooltip: 'Post options',
-                    onSelected: (_) => _copy(author, content),
+                    onSelected: (value) {
+                      if (value == 'edit') {
+                        widget.onEdit?.call();
+                      } else {
+                        _copy(author, content);
+                      }
+                    },
                     itemBuilder: (_) => [
+                      if (widget.onEdit != null)
+                        const PopupMenuItem(
+                          value: 'edit',
+                          child: Text('Edit announcement'),
+                        ),
                       const PopupMenuItem(
                         value: 'copy',
                         child: Text('Copy post text'),

@@ -8,10 +8,12 @@ import '../../widgets/community_avatar.dart';
 class CreatePostScreen extends StatefulWidget {
   final String initialCategory;
   final String initialContent;
+  final Map<String, dynamic>? announcement;
   const CreatePostScreen({
     super.key,
     this.initialCategory = 'update',
     this.initialContent = '',
+    this.announcement,
   });
 
   @override
@@ -20,11 +22,14 @@ class CreatePostScreen extends StatefulWidget {
 
 class _CreatePostScreenState extends State<CreatePostScreen> {
   late final TextEditingController _content = TextEditingController(
-    text: widget.initialContent,
+    text: widget.announcement?['content']?.toString() ?? widget.initialContent,
   );
   final _link = TextEditingController();
-  late String _category = widget.initialCategory;
-  String _visibility = 'public';
+  late String _category = widget.announcement == null
+      ? widget.initialCategory
+      : 'announcement';
+  late String _visibility =
+      widget.announcement?['visibility']?.toString() ?? 'public';
   bool _posting = false;
   bool _showLink = false;
   bool _published = false;
@@ -47,6 +52,8 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   bool get _officialsOnly =>
       _choosesAudience && _visibility == 'officials_only';
 
+  bool get _editing => widget.announcement != null;
+
   Future<void> _leave() async {
     if (_posting || _discarding) return;
     if (_content.text.trim().isEmpty && _link.text.trim().isEmpty) {
@@ -56,8 +63,12 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     final discard = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Discard this post?'),
-        content: const Text('Your draft has not been published.'),
+        title: Text(_editing ? 'Discard changes?' : 'Discard this post?'),
+        content: Text(
+          _editing
+              ? 'Your changes have not been saved.'
+              : 'Your draft has not been published.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -105,11 +116,21 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       _error = null;
     });
     try {
-      await MobileApiService.createWallPost(
-        content: text,
-        category: _category,
-        visibility: _officialsOnly ? 'officials_only' : 'public',
-      );
+      if (_editing) {
+        await MobileApiService.updateAnnouncement(
+          announcementId: int.parse(
+            '${widget.announcement!['announcement_id']}',
+          ),
+          content: text,
+          visibility: _officialsOnly ? 'officials_only' : 'public',
+        );
+      } else {
+        await MobileApiService.createWallPost(
+          content: text,
+          category: _category,
+          visibility: _officialsOnly ? 'officials_only' : 'public',
+        );
+      }
       if (!mounted) return;
       setState(() => _published = true);
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -150,7 +171,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
             onPressed: _posting ? null : _leave,
             icon: const Icon(Icons.close_rounded),
           ),
-          title: const Text('Create Post'),
+          title: Text(_editing ? 'Edit Announcement' : 'Create Post'),
           actions: [
             Padding(
               padding: const EdgeInsets.only(right: 16),
@@ -161,7 +182,11 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                             _link.text.trim().isEmpty)
                     ? null
                     : _submit,
-                child: Text(_posting ? 'Posting…' : 'Post'),
+                child: Text(
+                  _posting
+                      ? (_editing ? 'Saving…' : 'Posting…')
+                      : (_editing ? 'Save' : 'Post'),
+                ),
               ),
             ),
           ],
@@ -250,33 +275,38 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                 ),
               ),
               const SizedBox(height: 16),
-              DropdownButtonFormField<String>(
-                initialValue: _category,
-                isExpanded: true,
-                decoration: const InputDecoration(
-                  labelText: 'Post type',
-                  prefixIcon: Icon(Icons.label_outline_rounded),
-                ),
-                items: [
-                  const DropdownMenuItem(
-                    value: 'update',
-                    child: Text('Update'),
+              if (!_editing)
+                DropdownButtonFormField<String>(
+                  initialValue: _category,
+                  isExpanded: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Post type',
+                    prefixIcon: Icon(Icons.label_outline_rounded),
                   ),
-                  if (user['role'] == 'sk_president')
+                  items: [
                     const DropdownMenuItem(
-                      value: 'announcement',
-                      child: Text('Announcement'),
+                      value: 'update',
+                      child: Text('Update'),
                     ),
-                  const DropdownMenuItem(value: 'event', child: Text('Event')),
-                  const DropdownMenuItem(
-                    value: 'accomplishment',
-                    child: Text('Accomplishment'),
-                  ),
-                ],
-                onChanged: _posting
-                    ? null
-                    : (value) => setState(() => _category = value ?? 'update'),
-              ),
+                    if (user['role'] == 'sk_president')
+                      const DropdownMenuItem(
+                        value: 'announcement',
+                        child: Text('Announcement'),
+                      ),
+                    const DropdownMenuItem(
+                      value: 'event',
+                      child: Text('Event'),
+                    ),
+                    const DropdownMenuItem(
+                      value: 'accomplishment',
+                      child: Text('Accomplishment'),
+                    ),
+                  ],
+                  onChanged: _posting
+                      ? null
+                      : (value) =>
+                            setState(() => _category = value ?? 'update'),
+                ),
               if (_choosesAudience) ...[
                 const SizedBox(height: 20),
                 Text('Audience', style: Theme.of(context).textTheme.titleSmall),

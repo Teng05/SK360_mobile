@@ -1,4 +1,4 @@
-import 'dart:html' as html;
+import 'package:web/web.dart' as web;
 
 class SubmittedFileOpenResult {
   final bool opened;
@@ -9,7 +9,7 @@ class SubmittedFileOpenResult {
 
 class SubmittedFileOpener {
   static Future<SubmittedFileOpenResult> open(String url) async {
-    html.window.open(url, '_blank');
+    web.window.open(url, '_blank');
     return const SubmittedFileOpenResult(opened: true);
   }
 }

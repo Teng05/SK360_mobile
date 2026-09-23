@@ -9,11 +9,11 @@ class MobileApiService {
   static const String _rememberedEmailKey = 'remembered_email';
   static const String _accessTokenKey = 'access_token';
   static const String _userKey = 'current_user';
-  // Android Emulator's alias for the development computer's localhost.
-  // Override for physical devices or a deployed server with --dart-define.
+  static const String _sessionApiBaseUrlKey = 'session_api_base_url';
+  // Use the live API by default. Override for local testing with --dart-define.
   static const String baseUrl = String.fromEnvironment(
     'SK360_API_BASE_URL',
-    defaultValue: 'http://10.0.2.2:8000/api/mobile',
+    defaultValue: 'https://sk360lipacity.org/api/mobile',
   );
   static String webUrl(String path) {
     final root = baseUrl.replaceFirst(RegExp(r'/api/mobile$'), '');
@@ -82,8 +82,17 @@ class MobileApiService {
     final preferences = await SharedPreferences.getInstance();
     final token = preferences.getString(_accessTokenKey);
     final savedUser = preferences.getString(_userKey);
+    final sessionApiBaseUrl = preferences.getString(_sessionApiBaseUrlKey);
 
     if (token == null || token.isEmpty || savedUser == null) {
+      return false;
+    }
+
+    // Tokens are issued by one API server and cannot be reused after switching
+    // between localhost, a LAN address, and production. Sessions saved by an
+    // older app version have no server marker and must sign in again once.
+    if (sessionApiBaseUrl != baseUrl) {
+      await _clearSession();
       return false;
     }
 
@@ -167,11 +176,7 @@ class MobileApiService {
     return _request(
       'POST',
       '/password/reset/request',
-      body: {
-        'method': method,
-        if (email != null) 'email': email,
-        if (phone != null) 'phone': phone,
-      },
+      body: {'method': method, 'email': ?email, 'phone': ?phone},
       requiresAuth: false,
     );
   }
@@ -214,6 +219,20 @@ class MobileApiService {
 
     await sync();
 
+    return response;
+  }
+
+  static Future<Map<String, dynamic>> updateAnnouncement({
+    required int announcementId,
+    required String content,
+    required String visibility,
+  }) async {
+    final response = await _request(
+      'PATCH',
+      '/wall/posts/$announcementId',
+      body: {'post_content': content, 'visibility': visibility},
+    );
+    await sync();
     return response;
   }
 
@@ -374,6 +393,31 @@ class MobileApiService {
     return response;
   }
 
+  static Future<Map<String, dynamic>> updateEvent({
+    required int eventId,
+    required String title,
+    required String description,
+    required DateTime startDateTime,
+    required DateTime endDateTime,
+    required String eventType,
+    required String visibility,
+  }) async {
+    final response = await _request(
+      'PATCH',
+      '/events/$eventId',
+      body: {
+        'title': title,
+        'description': description,
+        'event_type': eventType,
+        'start_datetime': startDateTime.toIso8601String(),
+        'end_datetime': endDateTime.toIso8601String(),
+        'visibility': visibility,
+      },
+    );
+    await sync();
+    return response;
+  }
+
   static Future<Map<String, dynamic>> createMeeting({
     required String title,
     required DateTime meetingDate,
@@ -397,6 +441,28 @@ class MobileApiService {
     return response;
   }
 
+  static Future<Map<String, dynamic>> updateMeeting({
+    required int meetingId,
+    required String title,
+    required DateTime meetingDate,
+    required TimeOfDayData meetingTime,
+    String? agenda,
+  }) async {
+    final response = await _request(
+      'PATCH',
+      '/meetings/$meetingId',
+      body: {
+        'title': title,
+        'agenda': agenda,
+        'meeting_date': meetingDate.toIso8601String().substring(0, 10),
+        'meeting_time':
+            '${meetingTime.hour.toString().padLeft(2, '0')}:${meetingTime.minute.toString().padLeft(2, '0')}',
+      },
+    );
+    await sync();
+    return response;
+  }
+
   static Future<String> meetingJoinUrl(int meetingId) async {
     final response = await _request('GET', '/meetings/$meetingId/join-url');
     return response['join_url']?.toString() ?? '';
@@ -416,21 +482,92 @@ class MobileApiService {
     String? email,
     String? phone,
     String? term,
+    File? profilePicture,
   }) async {
-    final response = await _request(
-      'POST',
-      '/leadership/council',
-      body: {
-        'name': name,
-        if (email != null && email.trim().isNotEmpty) 'email': email.trim(),
-        if (phone != null && phone.trim().isNotEmpty) 'phone': phone.trim(),
-        if (term != null && term.trim().isNotEmpty) 'term': term.trim(),
-      },
-    );
+    final fields = <String, Object>{
+      'name': name,
+      if (email != null && email.trim().isNotEmpty) 'email': email.trim(),
+      if (phone != null && phone.trim().isNotEmpty) 'phone': phone.trim(),
+      if (term != null && term.trim().isNotEmpty) 'term': term.trim(),
+    };
+    final response = profilePicture == null
+        ? await _request('POST', '/leadership/council', body: fields)
+        : await _multipartRequest(
+            '/leadership/council',
+            fields: fields,
+            fileField: 'profile_img',
+            fileName: profilePicture.path.split(Platform.pathSeparator).last,
+            fileBytes: await profilePicture.readAsBytes(),
+            fileContentType: _imageContentType(profilePicture.path),
+          );
 
     await sync();
 
     return response;
+  }
+
+  static Future<Map<String, dynamic>> requestContactChange({
+    required String type,
+    required String value,
+  }) {
+    return _request(
+      'POST',
+      '/profile/contact/request',
+      body: {'type': type, 'value': value},
+    );
+  }
+
+  static Future<Map<String, dynamic>> verifyContactChange({
+    required String type,
+    required String value,
+    required String code,
+  }) async {
+    final response = await _request(
+      'POST',
+      '/profile/contact/verify',
+      body: {'type': type, 'value': value, 'code': code},
+    );
+    currentUser = response['user'] as Map<String, dynamic>? ?? currentUser;
+    await _saveSession();
+    await sync();
+    return response;
+  }
+
+  static Future<Map<String, dynamic>> updateCouncilMember({
+    required int councilId,
+    required String name,
+    String? email,
+    String? phone,
+    String? term,
+    File? profilePicture,
+  }) async {
+    final fields = <String, Object>{
+      'name': name,
+      'email': email?.trim() ?? '',
+      'phone': phone?.trim() ?? '',
+      if (term != null && term.trim().isNotEmpty) 'term': term.trim(),
+    };
+    final response = profilePicture == null
+        ? await _request('POST', '/leadership/council/$councilId', body: fields)
+        : await _multipartRequest(
+            '/leadership/council/$councilId',
+            fields: fields,
+            fileField: 'profile_img',
+            fileName: profilePicture.path.split(Platform.pathSeparator).last,
+            fileBytes: await profilePicture.readAsBytes(),
+            fileContentType: _imageContentType(profilePicture.path),
+          );
+    await sync();
+    return response;
+  }
+
+  static String _imageContentType(String path) {
+    final extension = path.split('.').last.toLowerCase();
+    return switch (extension) {
+      'png' => 'image/png',
+      'webp' => 'image/webp',
+      _ => 'image/jpeg',
+    };
   }
 
   static Future<List<Map<String, dynamic>>> chatUsers({
@@ -448,7 +585,7 @@ class MobileApiService {
     required int slotId,
     required String submissionType,
     required PdfUpload pdfFile,
-    String reportType = 'monthly',
+    String? reportType,
     int? reportingYear,
     int? reportingMonth,
     String? reportingQuarter,
@@ -459,10 +596,10 @@ class MobileApiService {
       fields: {
         'slot_id': slotId,
         'submission_type': submissionType,
-        'report_type': reportType,
-        if (reportingYear != null) 'reporting_year': reportingYear,
-        if (reportingMonth != null) 'reporting_month': reportingMonth,
-        if (reportingQuarter != null) 'reporting_quarter': reportingQuarter,
+        'report_type': ?reportType,
+        'reporting_year': ?reportingYear,
+        'reporting_month': ?reportingMonth,
+        'reporting_quarter': ?reportingQuarter,
         if (remarks != null && remarks.trim().isNotEmpty)
           'remarks': remarks.trim(),
       },
@@ -482,6 +619,7 @@ class MobileApiService {
     required String fileField,
     required String fileName,
     required Uint8List fileBytes,
+    String fileContentType = 'application/pdf',
   }) async {
     final uri = Uri.parse('$baseUrl$path');
     final client = HttpClient();
@@ -516,7 +654,7 @@ class MobileApiService {
       writeText(
         'Content-Disposition: form-data; name="$fileField"; filename="$fileName"\r\n',
       );
-      writeText('Content-Type: application/pdf\r\n\r\n');
+      writeText('Content-Type: $fileContentType\r\n\r\n');
       request.add(fileBytes);
       writeText('\r\n--$boundary--\r\n');
 
@@ -606,7 +744,7 @@ class MobileApiService {
       if (year != null) 'year': '$year',
       'period': period,
       if (month != null) 'month': '$month',
-      if (quarter != null) 'quarter': quarter,
+      'quarter': ?quarter,
     };
     final suffix = query.isEmpty ? '' : '?${Uri(queryParameters: query).query}';
 
@@ -639,12 +777,14 @@ class MobileApiService {
 
     await preferences.setString(_accessTokenKey, _accessToken!);
     await preferences.setString(_userKey, jsonEncode(currentUser));
+    await preferences.setString(_sessionApiBaseUrlKey, baseUrl);
   }
 
   static Future<void> _clearSession() async {
     final preferences = await SharedPreferences.getInstance();
     await preferences.remove(_accessTokenKey);
     await preferences.remove(_userKey);
+    await preferences.remove(_sessionApiBaseUrlKey);
     _accessToken = null;
     currentUser = null;
     syncedData = null;

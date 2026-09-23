@@ -229,8 +229,9 @@ class _ApiOverrides extends HttpOverrides {
       readNotificationIds.add(int.parse(readMatch.group(1)!));
       return {'message': 'Notification marked as read.'};
     }
-    if (uri.path.endsWith('/barangays'))
+    if (uri.path.endsWith('/barangays')) {
       return {'barangays': _fixtures()['barangays']};
+    }
     if (uri.path.endsWith('/submission-slots')) {
       // Preview-only records show each slot state; tests use the single slot.
       final slots = empty
@@ -248,13 +249,14 @@ class _ApiOverrides extends HttpOverrides {
         },
       };
     }
-    if (uri.path.endsWith('/submissions'))
+    if (uri.path.endsWith('/submissions')) {
       return {
         'submissions': [
           {'barangay_name': 'San Salvador', 'submitted': true},
         ],
       };
-    if (uri.path.endsWith('/consolidation'))
+    }
+    if (uri.path.endsWith('/consolidation')) {
       return {
         'years': [_now.year],
         'stats': {'total_barangays': 2, 'submitted': 1, 'pending': 1},
@@ -271,6 +273,7 @@ class _ApiOverrides extends HttpOverrides {
                 },
               ],
       };
+    }
     if (uri.path.endsWith('/chat/users')) return {'users': []};
     return <String, dynamic>{};
   }
@@ -297,6 +300,7 @@ class _Headers implements HttpHeaders {
 
 class _Request implements HttpClientRequest {
   final _ApiOverrides api;
+  @override
   final Uri uri;
   _Request(this.api, this.uri);
   String body = '';

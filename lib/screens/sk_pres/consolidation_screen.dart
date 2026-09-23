@@ -12,7 +12,9 @@ class ConsolidationScreen extends StatefulWidget {
 }
 
 class _ConsolidationScreenState extends State<ConsolidationScreen> {
+  static const int _pageSize = 10;
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+  final TextEditingController _searchController = TextEditingController();
   bool _isLoading = false;
   String? _loadError;
   int _year = DateTime.now().year;
@@ -22,11 +24,38 @@ class _ConsolidationScreenState extends State<ConsolidationScreen> {
   Map<String, dynamic> _stats = {};
   List<Map<String, dynamic>> _submissions = [];
   List<int> _years = [DateTime.now().year];
+  String _searchQuery = '';
+  int _currentPage = 1;
+
+  List<Map<String, dynamic>> get _filteredSubmissions {
+    final query = _searchQuery.trim().toLowerCase();
+    if (query.isEmpty) return _submissions;
+    return _submissions.where((row) {
+      final barangay = row['barangay']?.toString().toLowerCase() ?? '';
+      return barangay.contains(query);
+    }).toList();
+  }
+
+  int get _pageCount => (_filteredSubmissions.length / _pageSize).ceil();
+
+  List<Map<String, dynamic>> get _visibleSubmissions {
+    final rows = _filteredSubmissions;
+    if (rows.isEmpty) return [];
+    final safePage = _currentPage.clamp(1, _pageCount);
+    final start = (safePage - 1) * _pageSize;
+    return rows.skip(start).take(_pageSize).toList();
+  }
 
   @override
   void initState() {
     super.initState();
     _loadConsolidation();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   @override
@@ -81,6 +110,7 @@ class _ConsolidationScreenState extends State<ConsolidationScreen> {
                       _period = period;
                       _month = month;
                       _quarter = quarter;
+                      _currentPage = 1;
                     });
                     _loadConsolidation();
                   },
@@ -112,28 +142,71 @@ class _ConsolidationScreenState extends State<ConsolidationScreen> {
                 ),
               ),
               Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                child: TextField(
+                  controller: _searchController,
+                  decoration: InputDecoration(
+                    hintText: 'Search barangay...',
+                    prefixIcon: const Icon(Icons.search_rounded),
+                    suffixIcon: _searchQuery.isEmpty
+                        ? null
+                        : IconButton(
+                            tooltip: 'Clear search',
+                            onPressed: () {
+                              _searchController.clear();
+                              setState(() {
+                                _searchQuery = '';
+                                _currentPage = 1;
+                              });
+                            },
+                            icon: const Icon(Icons.close_rounded),
+                          ),
+                  ),
+                  onChanged: (value) => setState(() {
+                    _searchQuery = value;
+                    _currentPage = 1;
+                  }),
+                ),
+              ),
+              Padding(
                 padding: const EdgeInsets.fromLTRB(16, 24, 16, 4),
                 child: AppSectionHeading(
                   icon: Icons.folder_copy_outlined,
                   title: 'Barangay submissions',
                   action: AppStatusBadge(
-                    label: '${_submissions.length}',
+                    label: '${_filteredSubmissions.length}',
                     color: AppColors.primaryRed,
                   ),
                 ),
               ),
-              if (_submissions.isEmpty && !_isLoading && _loadError == null)
-                const AppEmptyState(
+              if (_filteredSubmissions.isEmpty &&
+                  !_isLoading &&
+                  _loadError == null)
+                AppEmptyState(
                   icon: Icons.folder_copy_outlined,
-                  title: 'No records for this period',
-                  message:
-                      'Choose another reporting period or pull down to refresh.',
+                  title: _searchQuery.isEmpty
+                      ? 'No records for this period'
+                      : 'No barangay found',
+                  message: _searchQuery.isEmpty
+                      ? 'Choose another reporting period or pull down to refresh.'
+                      : 'Try a different barangay name.',
                 )
               else
-                ..._submissions.map(
+                ..._visibleSubmissions.map(
                   (row) => Padding(
                     padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
                     child: _BarangaySubmissionCard(row: row),
+                  ),
+                ),
+              if (_pageCount > 1)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+                  child: _PaginationControls(
+                    currentPage: _currentPage,
+                    pageCount: _pageCount,
+                    totalItems: _filteredSubmissions.length,
+                    onPageChanged: (page) =>
+                        setState(() => _currentPage = page),
                   ),
                 ),
             ],
@@ -163,6 +236,7 @@ class _ConsolidationScreenState extends State<ConsolidationScreen> {
         _submissions = submissions
             .map((row) => Map<String, dynamic>.from(row as Map))
             .toList();
+        _currentPage = 1;
         _years =
             years
                 .map((year) => int.tryParse('$year') ?? DateTime.now().year)
@@ -380,6 +454,62 @@ class _BarangaySubmissionCard extends StatelessWidget {
           AppMeta(
             icon: Icons.schedule_rounded,
             label: 'Last: ${row['last_submission']}',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PaginationControls extends StatelessWidget {
+  final int currentPage;
+  final int pageCount;
+  final int totalItems;
+  final ValueChanged<int> onPageChanged;
+
+  const _PaginationControls({
+    required this.currentPage,
+    required this.pageCount,
+    required this.totalItems,
+    required this.onPageChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final firstItem = ((currentPage - 1) * 10) + 1;
+    final lastItem = (currentPage * 10).clamp(0, totalItems);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: AppDecorations.surface(),
+      child: Row(
+        children: [
+          IconButton(
+            tooltip: 'Previous page',
+            onPressed: currentPage > 1
+                ? () => onPageChanged(currentPage - 1)
+                : null,
+            icon: const Icon(Icons.chevron_left_rounded),
+          ),
+          Expanded(
+            child: Column(
+              children: [
+                Text(
+                  'Page $currentPage of $pageCount',
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
+                Text(
+                  'Showing $firstItem–$lastItem of $totalItems',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            tooltip: 'Next page',
+            onPressed: currentPage < pageCount
+                ? () => onPageChanged(currentPage + 1)
+                : null,
+            icon: const Icon(Icons.chevron_right_rounded),
           ),
         ],
       ),

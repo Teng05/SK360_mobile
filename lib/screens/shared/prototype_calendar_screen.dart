@@ -83,7 +83,7 @@ class _PrototypeCalendarScreenState extends State<PrototypeCalendarScreen> {
                     'submission dates in one place.',
                 action: _canScheduleEvents
                     ? FilledButton.icon(
-                        onPressed: _showScheduleDialog,
+                        onPressed: () => _showScheduleDialog(),
                         icon: const Icon(Icons.add_rounded, size: 20),
                         label: const Text('Schedule event'),
                       )
@@ -119,11 +119,15 @@ class _PrototypeCalendarScreenState extends State<PrototypeCalendarScreen> {
                 child: _EventsForDateCard(
                   date: _selectedDate,
                   events: selectedEvents,
+                  onEdit: _canScheduleEvents ? _showScheduleDialog : null,
                 ),
               ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 24, 16, 0),
-                child: _AllEventsCard(events: events),
+                child: _AllEventsCard(
+                  events: events,
+                  onEdit: _canScheduleEvents ? _showScheduleDialog : null,
+                ),
               ),
             ],
           ),
@@ -172,14 +176,21 @@ class _PrototypeCalendarScreenState extends State<PrototypeCalendarScreen> {
     handleRoleNavSelection(context, item);
   }
 
-  Future<void> _showScheduleDialog() async {
+  Future<void> _showScheduleDialog([Map<String, dynamic>? event]) async {
     if (!_canScheduleEvents) return;
 
-    DateTime startDate = _selectedDate;
-    DateTime endDate = _selectedDate;
-    String eventType = 'program';
-    String visibility = 'public';
+    final existingStart = DateTime.tryParse(
+      event?['start_datetime']?.toString() ?? '',
+    );
+    final existingEnd = DateTime.tryParse(
+      event?['end_datetime']?.toString() ?? '',
+    );
+    DateTime startDate = existingStart ?? _selectedDate;
+    DateTime endDate = existingEnd ?? startDate;
+    String eventType = event?['event_type']?.toString() ?? 'program';
+    String visibility = event?['visibility']?.toString() ?? 'public';
     bool isSubmitting = false;
+    bool initialized = false;
 
     await showDialog<void>(
       context: context,
@@ -187,10 +198,16 @@ class _PrototypeCalendarScreenState extends State<PrototypeCalendarScreen> {
         builder: (context, controllers) {
           final titleController = controllers[0];
           final descriptionController = controllers[1];
+          if (!initialized) {
+            titleController.text = event?['title']?.toString() ?? '';
+            descriptionController.text =
+                event?['description']?.toString() ?? '';
+            initialized = true;
+          }
           return StatefulBuilder(
             builder: (context, setDialogState) => AlertDialog(
               icon: const AppIconTile(icon: Icons.event_available_outlined),
-              title: const Text('New Event'),
+              title: Text(event == null ? 'New Event' : 'Edit Event'),
               content: SizedBox(
                 width: double.maxFinite,
                 child: SingleChildScrollView(
@@ -255,7 +272,7 @@ class _PrototypeCalendarScreenState extends State<PrototypeCalendarScreen> {
                             child: DropdownButtonFormField<String>(
                               isExpanded: true,
                               initialValue: eventType,
-                              items: const [
+                              items: [
                                 DropdownMenuItem(
                                   value: 'program',
                                   child: Text('Event/Program'),
@@ -272,6 +289,21 @@ class _PrototypeCalendarScreenState extends State<PrototypeCalendarScreen> {
                                   value: 'other',
                                   child: Text('Other'),
                                 ),
+                                DropdownMenuItem(
+                                  value: 'event',
+                                  child: Text('Event'),
+                                ),
+                                if (!{
+                                  'program',
+                                  'meeting',
+                                  'deadline',
+                                  'other',
+                                  'event',
+                                }.contains(eventType))
+                                  DropdownMenuItem(
+                                    value: eventType,
+                                    child: Text(eventType),
+                                  ),
                               ],
                               onChanged: (value) => setDialogState(
                                 () => eventType = value ?? 'program',
@@ -342,31 +374,51 @@ class _PrototypeCalendarScreenState extends State<PrototypeCalendarScreen> {
                           }
 
                           setDialogState(() => isSubmitting = true);
-                          final created = await _createEvent(
+                          final startDateTime = DateTime(
+                            startDate.year,
+                            startDate.month,
+                            startDate.day,
+                            existingStart?.hour ?? 0,
+                            existingStart?.minute ?? 0,
+                          );
+                          final endDateTime = DateTime(
+                            endDate.year,
+                            endDate.month,
+                            endDate.day,
+                            existingEnd?.hour ?? 23,
+                            existingEnd?.minute ?? 59,
+                          );
+                          if (endDateTime.isBefore(startDateTime)) {
+                            _showMessage(
+                              'End time cannot be before start time.',
+                            );
+                            setDialogState(() => isSubmitting = false);
+                            return;
+                          }
+                          final saved = await _saveEvent(
+                            eventId: event == null
+                                ? null
+                                : int.tryParse('${event['event_id']}'),
                             title: titleController.text.trim(),
                             description: descriptionController.text.trim(),
-                            startDateTime: DateTime(
-                              startDate.year,
-                              startDate.month,
-                              startDate.day,
-                            ),
-                            endDateTime: DateTime(
-                              endDate.year,
-                              endDate.month,
-                              endDate.day,
-                              23,
-                              59,
-                            ),
+                            startDateTime: startDateTime,
+                            endDateTime: endDateTime,
                             eventType: eventType,
                             visibility: visibility,
                           );
-                          if (created) {
+                          if (saved) {
                             if (context.mounted) Navigator.pop(context);
                           } else {
                             setDialogState(() => isSubmitting = false);
                           }
                         },
-                  child: Text(isSubmitting ? 'Creating...' : 'Create Event'),
+                  child: Text(
+                    isSubmitting
+                        ? 'Saving...'
+                        : event == null
+                        ? 'Create Event'
+                        : 'Save Changes',
+                  ),
                 ),
               ],
             ),
@@ -398,7 +450,8 @@ class _PrototypeCalendarScreenState extends State<PrototypeCalendarScreen> {
     );
   }
 
-  Future<bool> _createEvent({
+  Future<bool> _saveEvent({
+    int? eventId,
     required String title,
     required String description,
     required DateTime startDateTime,
@@ -408,15 +461,29 @@ class _PrototypeCalendarScreenState extends State<PrototypeCalendarScreen> {
   }) async {
     setState(() => _isLoading = true);
     try {
-      await MobileApiService.createEvent(
-        title: title,
-        description: description,
-        startDateTime: startDateTime,
-        endDateTime: endDateTime,
-        eventType: eventType,
-        visibility: visibility,
-      );
-      if (mounted) _showMessage('Event created.');
+      if (eventId == null) {
+        await MobileApiService.createEvent(
+          title: title,
+          description: description,
+          startDateTime: startDateTime,
+          endDateTime: endDateTime,
+          eventType: eventType,
+          visibility: visibility,
+        );
+      } else {
+        await MobileApiService.updateEvent(
+          eventId: eventId,
+          title: title,
+          description: description,
+          startDateTime: startDateTime,
+          endDateTime: endDateTime,
+          eventType: eventType,
+          visibility: visibility,
+        );
+      }
+      if (mounted) {
+        _showMessage(eventId == null ? 'Event created.' : 'Event updated.');
+      }
       return true;
     } on MobileApiException catch (exception) {
       if (mounted) _showMessage(exception.message);
@@ -700,8 +767,13 @@ class _Weekday extends StatelessWidget {
 class _EventsForDateCard extends StatelessWidget {
   final DateTime date;
   final List<Map<String, dynamic>> events;
+  final ValueChanged<Map<String, dynamic>>? onEdit;
 
-  const _EventsForDateCard({required this.date, required this.events});
+  const _EventsForDateCard({
+    required this.date,
+    required this.events,
+    this.onEdit,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -740,7 +812,7 @@ class _EventsForDateCard extends StatelessWidget {
             ),
           )
         else
-          ...events.map((event) => _EventTile(event: event)),
+          ...events.map((event) => _EventTile(event: event, onEdit: onEdit)),
       ],
     );
   }
@@ -748,8 +820,9 @@ class _EventsForDateCard extends StatelessWidget {
 
 class _AllEventsCard extends StatelessWidget {
   final List<Map<String, dynamic>> events;
+  final ValueChanged<Map<String, dynamic>>? onEdit;
 
-  const _AllEventsCard({required this.events});
+  const _AllEventsCard({required this.events, this.onEdit});
 
   @override
   Widget build(BuildContext context) {
@@ -772,7 +845,7 @@ class _AllEventsCard extends StatelessWidget {
             style: TextStyle(color: AppColors.lightText),
           )
         else
-          ...visible.map((event) => _EventTile(event: event)),
+          ...visible.map((event) => _EventTile(event: event, onEdit: onEdit)),
       ],
     );
   }
@@ -780,8 +853,9 @@ class _AllEventsCard extends StatelessWidget {
 
 class _EventTile extends StatelessWidget {
   final Map<String, dynamic> event;
+  final ValueChanged<Map<String, dynamic>>? onEdit;
 
-  const _EventTile({required this.event});
+  const _EventTile({required this.event, this.onEdit});
 
   @override
   Widget build(BuildContext context) {
@@ -820,6 +894,12 @@ class _EventTile extends StatelessWidget {
                 ],
               ),
             ),
+            if (onEdit != null && event['event_id'] != null)
+              IconButton(
+                tooltip: 'Edit event',
+                onPressed: () => onEdit!(event),
+                icon: const Icon(Icons.edit_outlined),
+              ),
           ],
         ),
       ),

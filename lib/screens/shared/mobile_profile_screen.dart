@@ -174,6 +174,8 @@ class _MobileProfileScreenState extends State<MobileProfileScreen> {
         builder: (_) => _EditProfilePage(
           firstName: user['first_name']?.toString() ?? '',
           lastName: user['last_name']?.toString() ?? '',
+          email: user['email']?.toString() ?? '',
+          phone: user['phone_number']?.toString() ?? '',
           profilePictureUrl: user['profile_pic_url']?.toString(),
         ),
       ),
@@ -205,11 +207,15 @@ class _MobileProfileScreenState extends State<MobileProfileScreen> {
 class _EditProfilePage extends StatefulWidget {
   final String firstName;
   final String lastName;
+  final String email;
+  final String phone;
   final String? profilePictureUrl;
 
   const _EditProfilePage({
     required this.firstName,
     required this.lastName,
+    required this.email,
+    required this.phone,
     this.profilePictureUrl,
   });
 
@@ -220,8 +226,11 @@ class _EditProfilePage extends StatefulWidget {
 class _EditProfilePageState extends State<_EditProfilePage> {
   late final TextEditingController _firstNameController;
   late final TextEditingController _lastNameController;
+  late final TextEditingController _emailController;
+  late final TextEditingController _phoneController;
   bool _isSaving = false;
   bool _isPicking = false;
+  bool _isContactVerifying = false;
   String? _error;
   XFile? _profilePicture;
 
@@ -230,12 +239,16 @@ class _EditProfilePageState extends State<_EditProfilePage> {
     super.initState();
     _firstNameController = TextEditingController(text: widget.firstName);
     _lastNameController = TextEditingController(text: widget.lastName);
+    _emailController = TextEditingController(text: widget.email);
+    _phoneController = TextEditingController(text: widget.phone);
   }
 
   @override
   void dispose() {
     _firstNameController.dispose();
     _lastNameController.dispose();
+    _emailController.dispose();
+    _phoneController.dispose();
     super.dispose();
   }
 
@@ -294,6 +307,138 @@ class _EditProfilePageState extends State<_EditProfilePage> {
     } finally {
       if (mounted) setState(() => _isPicking = false);
     }
+  }
+
+  Future<void> _changeContact(String type) async {
+    if (_isContactVerifying) return;
+    final value = (type == 'email' ? _emailController : _phoneController).text
+        .trim();
+    final original = type == 'email' ? widget.email : widget.phone;
+    if (value.isEmpty) {
+      setState(
+        () => _error =
+            'Enter the new ${type == 'email' ? 'email address' : 'phone number'}.',
+      );
+      return;
+    }
+    if (value == original) {
+      setState(
+        () => _error =
+            'Enter a different ${type == 'email' ? 'email address' : 'phone number'}.',
+      );
+      return;
+    }
+
+    setState(() {
+      _isContactVerifying = true;
+      _error = null;
+    });
+    try {
+      final response = await MobileApiService.requestContactChange(
+        type: type,
+        value: value,
+      );
+      if (!mounted) return;
+      final delivery = response['delivery_email']?.toString() ?? '';
+      final verified = await _showContactOtpDialog(type, value, delivery);
+      if (verified == true && mounted) {
+        Navigator.pop(context, true);
+      }
+    } on MobileApiException catch (exception) {
+      if (mounted) setState(() => _error = exception.message);
+    } finally {
+      if (mounted) setState(() => _isContactVerifying = false);
+    }
+  }
+
+  Future<bool?> _showContactOtpDialog(
+    String type,
+    String value,
+    String delivery,
+  ) {
+    final codeController = TextEditingController();
+    var isVerifying = false;
+    String? dialogError;
+    return showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          Future<void> verify() async {
+            if (codeController.text.trim().length != 6) {
+              setDialogState(
+                () => dialogError = 'Enter the complete 6-digit OTP.',
+              );
+              return;
+            }
+            setDialogState(() {
+              isVerifying = true;
+              dialogError = null;
+            });
+            try {
+              await MobileApiService.verifyContactChange(
+                type: type,
+                value: value,
+                code: codeController.text.trim(),
+              );
+              if (dialogContext.mounted) Navigator.pop(dialogContext, true);
+            } on MobileApiException catch (exception) {
+              if (dialogContext.mounted) {
+                setDialogState(() {
+                  isVerifying = false;
+                  dialogError = exception.message;
+                });
+              }
+            }
+          }
+
+          return AlertDialog(
+            icon: const Icon(
+              Icons.mark_email_read_outlined,
+              color: AppColors.primaryRed,
+            ),
+            title: const Text('Verify OTP'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('Enter the code sent to $delivery.'),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: codeController,
+                  keyboardType: TextInputType.number,
+                  maxLength: 6,
+                  autofocus: true,
+                  decoration: const InputDecoration(
+                    labelText: '6-digit OTP',
+                    counterText: '',
+                  ),
+                  onSubmitted: (_) => isVerifying ? null : verify(),
+                ),
+                if (dialogError != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    dialogError!,
+                    style: const TextStyle(color: AppColors.primaryRed),
+                  ),
+                ],
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: isVerifying
+                    ? null
+                    : () => Navigator.pop(dialogContext, false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: isVerifying ? null : verify,
+                child: Text(isVerifying ? 'Verifying...' : 'Verify'),
+              ),
+            ],
+          );
+        },
+      ),
+    ).whenComplete(codeController.dispose);
   }
 
   @override
@@ -364,6 +509,7 @@ class _EditProfilePageState extends State<_EditProfilePage> {
           _ProfileInput(
             controller: _firstNameController,
             hint: 'First name',
+            enabled: false,
             textCapitalization: TextCapitalization.words,
             textInputAction: TextInputAction.next,
           ),
@@ -371,9 +517,67 @@ class _EditProfilePageState extends State<_EditProfilePage> {
           _ProfileInput(
             controller: _lastNameController,
             hint: 'Last name',
+            enabled: false,
             textCapitalization: TextCapitalization.words,
             textInputAction: TextInputAction.done,
             onSubmitted: (_) => _save(),
+          ),
+          const SizedBox(height: 8),
+          const Row(
+            children: [
+              Icon(
+                Icons.lock_outline_rounded,
+                size: 16,
+                color: AppColors.lightText,
+              ),
+              SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  'First and last name are locked and cannot be changed.',
+                  style: TextStyle(color: AppColors.lightText, fontSize: 12),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 22),
+          Text(
+            'Contact information',
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Each change requires a verification code before it is saved.',
+            style: TextStyle(color: AppColors.lightText, fontSize: 12),
+          ),
+          const SizedBox(height: 14),
+          _ProfileInput(
+            controller: _emailController,
+            hint: 'Email address',
+            keyboardType: TextInputType.emailAddress,
+          ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: _isContactVerifying
+                ? null
+                : () => _changeContact('email'),
+            icon: const Icon(Icons.verified_user_outlined),
+            label: const Text('Verify and update email'),
+          ),
+          const SizedBox(height: 14),
+          _ProfileInput(
+            controller: _phoneController,
+            hint: 'Phone number',
+            keyboardType: TextInputType.phone,
+          ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: _isContactVerifying
+                ? null
+                : () => _changeContact('phone'),
+            icon: const Icon(Icons.mark_email_read_outlined),
+            label: const Text('Verify phone change by email'),
           ),
           if (_error != null) ...[
             const SizedBox(height: 12),
@@ -584,6 +788,7 @@ class _ProfileInput extends StatelessWidget {
   final TextCapitalization textCapitalization;
   final int? maxLength;
   final ValueChanged<String>? onSubmitted;
+  final bool enabled;
 
   const _ProfileInput({
     required this.controller,
@@ -594,6 +799,7 @@ class _ProfileInput extends StatelessWidget {
     this.textCapitalization = TextCapitalization.none,
     this.maxLength,
     this.onSubmitted,
+    this.enabled = true,
   });
 
   @override
@@ -607,6 +813,7 @@ class _ProfileInput extends StatelessWidget {
       textInputAction: textInputAction,
       textCapitalization: textCapitalization,
       maxLength: maxLength,
+      enabled: enabled,
       onSubmitted: onSubmitted,
     );
   }

@@ -1,4 +1,8 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:image_cropper/image_cropper.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../services/mobile_api_service.dart';
 import '../../ui/app_ui.dart';
@@ -137,6 +141,7 @@ class _PresidentLeadershipScreenState extends State<PresidentLeadershipScreen> {
                 icon: Icons.groups_outlined,
                 emptyText: 'No SK councilors found.',
                 leaders: councilors,
+                onEdit: _isChairman ? _showEditCouncilDialog : null,
               ),
             ],
           ),
@@ -181,6 +186,7 @@ class _PresidentLeadershipScreenState extends State<PresidentLeadershipScreen> {
           final map = Map<String, dynamic>.from(row as Map);
           final barangayId = '${map['barangay_id']}';
           return _Leader(
+            id: int.tryParse('${map['leadership_id']}'),
             name: _firstValue(map, ['full_name', 'name'], 'Unnamed official'),
             position: _positionLabel(
               _firstValue(map, ['position'], 'SK Councilor'),
@@ -190,6 +196,9 @@ class _PresidentLeadershipScreenState extends State<PresidentLeadershipScreen> {
             term: _termLabel(map),
             status: _firstValue(map, ['status'], 'current'),
             profilePictureUrl: map['profile_pic_url']?.toString(),
+            email: map['email']?.toString() ?? '',
+            phone: map['phone']?.toString() ?? '',
+            isCouncilRecord: map['user_id'] == null,
           );
         })
         .where((leader) {
@@ -242,6 +251,7 @@ class _PresidentLeadershipScreenState extends State<PresidentLeadershipScreen> {
     var phone = '';
     var term = '2023-2026';
     bool isSaving = false;
+    File? profilePicture;
 
     await showDialog<void>(
       context: context,
@@ -263,9 +273,10 @@ class _PresidentLeadershipScreenState extends State<PresidentLeadershipScreen> {
                   email: email,
                   phone: phone,
                   term: term,
+                  profilePicture: profilePicture,
                 );
                 saved = true;
-                if (!mounted) return;
+                if (!mounted || !dialogContext.mounted) return;
                 Navigator.pop(dialogContext);
                 setState(() {});
                 _showMessage('SK council member added.');
@@ -285,6 +296,16 @@ class _PresidentLeadershipScreenState extends State<PresidentLeadershipScreen> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    _CouncilPhotoPicker(
+                      file: profilePicture,
+                      onPick: () async {
+                        final image = await _pickCouncilPhoto();
+                        if (image != null && dialogContext.mounted) {
+                          setDialogState(() => profilePicture = image);
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 14),
                     TextField(
                       decoration: _decoration('Full name'),
                       textInputAction: TextInputAction.next,
@@ -333,6 +354,142 @@ class _PresidentLeadershipScreenState extends State<PresidentLeadershipScreen> {
         );
       },
     );
+  }
+
+  Future<void> _showEditCouncilDialog(_Leader leader) async {
+    if (leader.id == null || !leader.isCouncilRecord) return;
+    var name = leader.name;
+    var email = leader.email;
+    var phone = leader.phone;
+    var term = leader.term;
+    var isSaving = false;
+    File? profilePicture;
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          Future<void> submit() async {
+            if (name.trim().isEmpty) {
+              _showMessage('Enter council member name.');
+              return;
+            }
+            setDialogState(() => isSaving = true);
+            try {
+              await MobileApiService.updateCouncilMember(
+                councilId: leader.id!,
+                name: name.trim(),
+                email: email,
+                phone: phone,
+                term: term,
+                profilePicture: profilePicture,
+              );
+              if (!mounted || !dialogContext.mounted) return;
+              Navigator.pop(dialogContext);
+              setState(() {});
+              _showMessage('SK council member updated.');
+            } on MobileApiException catch (exception) {
+              if (mounted) _showMessage(exception.message);
+              if (dialogContext.mounted) setDialogState(() => isSaving = false);
+            }
+          }
+
+          return AlertDialog(
+            icon: const AppIconTile(icon: Icons.manage_accounts_outlined),
+            title: const Text('Edit SK Councilor'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _CouncilPhotoPicker(
+                    file: profilePicture,
+                    networkUrl: leader.profilePictureUrl,
+                    onPick: () async {
+                      final image = await _pickCouncilPhoto();
+                      if (image != null && dialogContext.mounted) {
+                        setDialogState(() => profilePicture = image);
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 14),
+                  TextFormField(
+                    initialValue: name,
+                    decoration: _decoration('Full name'),
+                    onChanged: (value) => name = value,
+                  ),
+                  const SizedBox(height: 10),
+                  TextFormField(
+                    initialValue: email,
+                    decoration: _decoration('Email'),
+                    keyboardType: TextInputType.emailAddress,
+                    onChanged: (value) => email = value,
+                  ),
+                  const SizedBox(height: 10),
+                  TextFormField(
+                    initialValue: phone,
+                    decoration: _decoration('Phone'),
+                    keyboardType: TextInputType.phone,
+                    onChanged: (value) => phone = value,
+                  ),
+                  const SizedBox(height: 10),
+                  TextFormField(
+                    initialValue: term,
+                    decoration: _decoration('Term'),
+                    onChanged: (value) => term = value,
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: isSaving ? null : () => Navigator.pop(dialogContext),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: isSaving ? null : submit,
+                child: Text(isSaving ? 'Saving...' : 'Save'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Future<File?> _pickCouncilPhoto() async {
+    final selected = await ImagePicker().pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 95,
+      maxWidth: 2000,
+      maxHeight: 2000,
+    );
+    if (selected == null) return null;
+
+    final cropped = await ImageCropper().cropImage(
+      sourcePath: selected.path,
+      aspectRatio: const CropAspectRatio(ratioX: 1, ratioY: 1),
+      compressFormat: ImageCompressFormat.jpg,
+      compressQuality: 88,
+      maxWidth: 1200,
+      maxHeight: 1200,
+      uiSettings: [
+        AndroidUiSettings(
+          toolbarTitle: 'Adjust councilor photo',
+          toolbarColor: AppColors.primaryRed,
+          toolbarWidgetColor: Colors.white,
+          activeControlsWidgetColor: AppColors.primaryRed,
+          initAspectRatio: CropAspectRatioPreset.square,
+          lockAspectRatio: true,
+        ),
+        IOSUiSettings(
+          title: 'Adjust councilor photo',
+          aspectRatioLockEnabled: true,
+          resetAspectRatioEnabled: false,
+        ),
+      ],
+    );
+
+    return cropped == null ? null : File(cropped.path);
   }
 
   bool get _isChairman {
@@ -424,12 +581,14 @@ class _Section extends StatelessWidget {
   final IconData icon;
   final String emptyText;
   final List<_Leader> leaders;
+  final ValueChanged<_Leader>? onEdit;
 
   const _Section({
     required this.title,
     required this.icon,
     required this.emptyText,
     required this.leaders,
+    this.onEdit,
   });
 
   @override
@@ -460,7 +619,7 @@ class _Section extends StatelessWidget {
                 for (final leader in leaders)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 10),
-                    child: _LeaderCard(leader: leader),
+                    child: _LeaderCard(leader: leader, onEdit: onEdit),
                   ),
               ],
             ),
@@ -472,8 +631,9 @@ class _Section extends StatelessWidget {
 
 class _LeaderCard extends StatelessWidget {
   final _Leader leader;
+  final ValueChanged<_Leader>? onEdit;
 
-  const _LeaderCard({required this.leader});
+  const _LeaderCard({required this.leader, this.onEdit});
 
   @override
   Widget build(BuildContext context) {
@@ -563,6 +723,12 @@ class _LeaderCard extends StatelessWidget {
               ],
             ),
           ),
+          if (onEdit != null && leader.isCouncilRecord)
+            IconButton(
+              tooltip: 'Edit councilor',
+              onPressed: () => onEdit!(leader),
+              icon: const Icon(Icons.edit_outlined),
+            ),
         ],
       ),
     );
@@ -588,6 +754,50 @@ class _SummaryCard extends StatelessWidget {
   }
 }
 
+class _CouncilPhotoPicker extends StatelessWidget {
+  final File? file;
+  final String? networkUrl;
+  final VoidCallback onPick;
+
+  const _CouncilPhotoPicker({
+    required this.file,
+    required this.onPick,
+    this.networkUrl,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final hasNetworkImage = networkUrl?.isNotEmpty == true;
+    return Column(
+      children: [
+        CircleAvatar(
+          radius: 42,
+          backgroundColor: AppColors.softPink,
+          backgroundImage: file != null
+              ? FileImage(file!)
+              : hasNetworkImage
+              ? NetworkImage(networkUrl!) as ImageProvider
+              : null,
+          child: file == null && !hasNetworkImage
+              ? const Icon(
+                  Icons.person_outline,
+                  size: 40,
+                  color: AppColors.primaryRed,
+                )
+              : null,
+        ),
+        TextButton.icon(
+          onPressed: onPick,
+          icon: const Icon(Icons.photo_library_outlined),
+          label: Text(
+            file == null && !hasNetworkImage ? 'Add picture' : 'Change picture',
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _BarangayOption {
   final String id;
   final String name;
@@ -596,6 +806,7 @@ class _BarangayOption {
 }
 
 class _Leader {
+  final int? id;
   final String name;
   final String position;
   final String barangayId;
@@ -603,8 +814,12 @@ class _Leader {
   final String term;
   final String status;
   final String? profilePictureUrl;
+  final String email;
+  final String phone;
+  final bool isCouncilRecord;
 
   const _Leader({
+    this.id,
     required this.name,
     required this.position,
     required this.barangayId,
@@ -612,6 +827,9 @@ class _Leader {
     required this.term,
     required this.status,
     this.profilePictureUrl,
+    this.email = '',
+    this.phone = '',
+    this.isCouncilRecord = false,
   });
 
   bool get isExecutive {

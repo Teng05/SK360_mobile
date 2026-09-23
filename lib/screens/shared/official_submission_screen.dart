@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import '../../services/mobile_api_service.dart';
 import '../../ui/app_ui.dart';
+import '../../utils/submitted_file_opener.dart';
 import '../../widgets/president_components.dart';
 
 enum SubmissionKind { report, budget }
@@ -141,7 +142,14 @@ class _OfficialSubmissionScreenState extends State<OfficialSubmissionScreen>
                     if (submissions.isEmpty)
                       const _Panel(child: _EmptyText('No submissions yet.'))
                     else
-                      ...submissions.map((row) => _SubmissionTile(row: row)),
+                      ...submissions.map(
+                        (row) => _SubmissionTile(
+                          row: row,
+                          onTap: widget.kind == SubmissionKind.budget
+                              ? () => _openFinancialRecord(row)
+                              : null,
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -196,6 +204,14 @@ class _OfficialSubmissionScreenState extends State<OfficialSubmissionScreen>
         .toList();
   }
 
+  void _openFinancialRecord(Map<String, dynamic> row) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => _FinancialRecordDetailsPage(record: row),
+      ),
+    );
+  }
+
   Future<void> _submit(Map<String, dynamic> slot) async {
     final draft = await Navigator.of(context).push<_SubmissionDraft>(
       MaterialPageRoute(
@@ -209,6 +225,7 @@ class _OfficialSubmissionScreenState extends State<OfficialSubmissionScreen>
     if (draft == null || !mounted) return;
 
     final now = DateTime.now();
+    final isBudget = widget.kind == SubmissionKind.budget;
 
     setState(() => _isLoading = true);
     try {
@@ -216,10 +233,12 @@ class _OfficialSubmissionScreenState extends State<OfficialSubmissionScreen>
         slotId: _int(slot['slot_id']),
         submissionType: _submissionType,
         pdfFile: draft.file,
-        reportType: draft.reportType,
-        reportingYear: now.year,
-        reportingMonth: draft.reportType == 'monthly' ? now.month : null,
-        reportingQuarter: draft.reportType == 'quarterly'
+        reportType: isBudget ? draft.reportType : null,
+        reportingYear: isBudget ? now.year : null,
+        reportingMonth: isBudget && draft.reportType == 'monthly'
+            ? now.month
+            : null,
+        reportingQuarter: isBudget && draft.reportType == 'quarterly'
             ? draft.quarter
             : null,
         remarks: draft.remarks,
@@ -344,26 +363,29 @@ class _SubmissionFormPageState extends State<_SubmissionFormPage> {
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
-          const AppSectionHeading(
+          AppSectionHeading(
             title: 'Submission details',
-            subtitle:
-                'Select a reporting period, attach your PDF, and add any remarks.',
+            subtitle: widget.kind == SubmissionKind.budget
+                ? 'Select a reporting period, attach your PDF, and add any remarks.'
+                : 'Attach your completed report PDF and add any remarks.',
           ),
           const SizedBox(height: 24),
-          DropdownButtonFormField<String>(
-            isExpanded: true,
-            initialValue: _reportType,
-            decoration: const InputDecoration(labelText: 'Period type'),
-            items: const [
-              DropdownMenuItem(value: 'monthly', child: Text('Monthly')),
-              DropdownMenuItem(value: 'quarterly', child: Text('Quarterly')),
-              DropdownMenuItem(value: 'annual', child: Text('Annual')),
-            ],
-            onChanged: (value) {
-              if (value != null) setState(() => _reportType = value);
-            },
-          ),
-          if (_reportType == 'quarterly') ...[
+          if (widget.kind == SubmissionKind.budget)
+            DropdownButtonFormField<String>(
+              isExpanded: true,
+              initialValue: _reportType,
+              decoration: const InputDecoration(labelText: 'Period type'),
+              items: const [
+                DropdownMenuItem(value: 'monthly', child: Text('Monthly')),
+                DropdownMenuItem(value: 'quarterly', child: Text('Quarterly')),
+                DropdownMenuItem(value: 'annual', child: Text('Annual')),
+              ],
+              onChanged: (value) {
+                if (value != null) setState(() => _reportType = value);
+              },
+            ),
+          if (widget.kind == SubmissionKind.budget &&
+              _reportType == 'quarterly') ...[
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(
               isExpanded: true,
@@ -544,8 +566,9 @@ class _SlotTile extends StatelessWidget {
 
 class _SubmissionTile extends StatelessWidget {
   final Map<String, dynamic> row;
+  final VoidCallback? onTap;
 
-  const _SubmissionTile({required this.row});
+  const _SubmissionTile({required this.row, this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -563,31 +586,169 @@ class _SubmissionTile extends StatelessWidget {
         : status == 'pending'
         ? AppColors.warning
         : AppColors.success;
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(14),
-      decoration: AppDecorations.surface(),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(AppSpace.radius),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.all(14),
+        decoration: AppDecorations.surface(),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            AppIconTile(
+              icon: Icons.description_outlined,
+              color: color,
+              size: 19,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: Theme.of(context).textTheme.titleSmall),
+                  const SizedBox(height: 4),
+                  AppMeta(icon: Icons.schedule_rounded, label: date),
+                  const SizedBox(height: 8),
+                  AppStatusBadge(
+                    label: status.replaceAll('_', ' '),
+                    color: color,
+                    dot: true,
+                  ),
+                ],
+              ),
+            ),
+            if (onTap != null) ...[
+              const SizedBox(width: 8),
+              const Icon(
+                Icons.chevron_right_rounded,
+                color: AppColors.lightText,
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _FinancialRecordDetailsPage extends StatelessWidget {
+  final Map<String, dynamic> record;
+
+  const _FinancialRecordDetailsPage({required this.record});
+
+  String _value(List<String> keys) {
+    for (final key in keys) {
+      final value = record[key]?.toString().trim() ?? '';
+      if (value.isNotEmpty && value.toLowerCase() != 'null') return value;
+    }
+    return '';
+  }
+
+  String get _fileUrl {
+    final url = _value(['uploaded_file_url', 'generated_pdf_url']);
+    if (url.isNotEmpty) return url;
+    final path = _value(['uploaded_file_path', 'generated_pdf_path']);
+    return path.isEmpty ? '' : MobileApiService.webUrl(path);
+  }
+
+  Future<void> _openFile(BuildContext context) async {
+    final result = await SubmittedFileOpener.open(_fileUrl);
+    if (!result.opened && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(result.message ?? 'Unable to open file.')),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final title = _value(['title', 'report_title']);
+    final status = _value(['status']);
+    final year = _value(['fiscal_year', 'reporting_year']);
+    final period = _value(['budget_period_type', 'report_type']);
+    final month = _value(['fiscal_month', 'reporting_month']);
+    final quarter = _value(['fiscal_quarter', 'reporting_quarter']);
+    final fileName = _value(['uploaded_file_name']);
+    final submittedAt = _value(['submitted_at', 'created_at']);
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Financial Record')),
+      backgroundColor: AppColors.lightGrayBg,
+      body: ListView(
+        padding: const EdgeInsets.all(16),
         children: [
-          AppIconTile(icon: Icons.description_outlined, color: color, size: 19),
-          const SizedBox(width: 12),
-          Expanded(
+          AppSectionHeading(
+            title: title.isEmpty ? 'Financial document' : title,
+            subtitle: 'Submitted financial record',
+          ),
+          const SizedBox(height: 16),
+          AppSurface(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: Theme.of(context).textTheme.titleSmall),
-                const SizedBox(height: 4),
-                AppMeta(icon: Icons.schedule_rounded, label: date),
-                const SizedBox(height: 8),
-                AppStatusBadge(
-                  label: status.replaceAll('_', ' '),
-                  color: color,
-                  dot: true,
+                _RecordDetail(label: 'Status', value: status),
+                _RecordDetail(label: 'Submitted', value: submittedAt),
+                _RecordDetail(label: 'Fiscal year', value: year),
+                _RecordDetail(label: 'Period type', value: period),
+                _RecordDetail(label: 'Month', value: month),
+                _RecordDetail(label: 'Quarter', value: quarter),
+                _RecordDetail(
+                  label: 'Document type',
+                  value: _value(['document_type']),
+                ),
+                _RecordDetail(
+                  label: 'Submission method',
+                  value: _value(['submission_method']),
+                ),
+                _RecordDetail(
+                  label: 'Total amount',
+                  value: _value(['total_amount']),
+                ),
+                _RecordDetail(
+                  label: 'Barangay',
+                  value: _value(['barangay_name', 'barangay_id']),
+                ),
+                _RecordDetail(label: 'File', value: fileName),
+                _RecordDetail(label: 'Remarks', value: _value(['remarks'])),
+                _RecordDetail(
+                  label: 'Record ID',
+                  value: _value(['budget_report_id']),
                 ),
               ],
             ),
           ),
+          if (_fileUrl.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              onPressed: () => _openFile(context),
+              icon: const Icon(Icons.picture_as_pdf_outlined),
+              label: const Text('Open financial document'),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _RecordDetail extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _RecordDetail({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    if (value.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: Theme.of(context).textTheme.labelMedium),
+          const SizedBox(height: 4),
+          Text(value, style: Theme.of(context).textTheme.bodyLarge),
         ],
       ),
     );

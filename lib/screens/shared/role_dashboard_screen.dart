@@ -75,8 +75,11 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
     final barangay = _user['barangay_name']?.toString() ?? 'Barangay';
     final posts = _rows('wall_posts');
     final meetings = _rows('meetings');
-    return WillPopScope(
-      onWillPop: _handleHomeBack,
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) _handleHomeBack();
+      },
       child: Scaffold(
         key: _scaffoldKey,
         drawer: const PresidentSideDrawer(),
@@ -113,8 +116,7 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
                   AppEmptyState(
                     icon: Icons.cloud_off_outlined,
                     title: 'Unable to refresh',
-                    message:
-                        'Check your connection and try again. Previously loaded records may still be shown.',
+                    message: _loadError!,
                     onAction: _refresh,
                   ),
                 Padding(

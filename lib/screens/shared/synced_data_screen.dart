@@ -121,7 +121,12 @@ class _SyncedDataScreenState extends State<SyncedDataScreen> {
                     child: widget.dataKey == 'wall_posts'
                         ? CommunityPostCard(
                             post: row,
-                            onLike: () => _likePost(row),
+                            onLike: row['visibility'] == 'public'
+                                ? () => _likePost(row)
+                                : null,
+                            onEdit: _canManageAnnouncement(row)
+                                ? () => _editAnnouncement(row)
+                                : null,
                           )
                         : _DataCard(row: row),
                   ),
@@ -163,6 +168,18 @@ class _SyncedDataScreenState extends State<SyncedDataScreen> {
     final rows = source
         .map((row) => Map<String, dynamic>.from(row as Map))
         .toList();
+
+    if (widget.dataKey == 'wall_posts') {
+      final shownIds = rows.map((row) => '${row['announcement_id']}').toSet();
+      final permitted =
+          MobileApiService.syncedData?['announcements'] as List? ?? [];
+      for (final item in permitted.whereType<Map>()) {
+        final announcement = Map<String, dynamic>.from(item);
+        if (shownIds.add('${announcement['announcement_id']}')) {
+          rows.add(announcement);
+        }
+      }
+    }
 
     if (widget.dataKey == 'wall_posts' || widget.dataKey == 'announcements') {
       rows.sort((a, b) {
@@ -210,6 +227,27 @@ class _SyncedDataScreenState extends State<SyncedDataScreen> {
     if (mounted) {
       setState(() {});
       if (posted == true) _showMessage('Your post has been published.');
+    }
+  }
+
+  bool _canManageAnnouncement(Map<String, dynamic> row) {
+    if (widget.dataKey != 'wall_posts' || !_canCreatePost) return false;
+    final title = row['title']?.toString().trim().toLowerCase() ?? '';
+    return !{
+      'community update',
+      'event update',
+      'accomplishment',
+    }.contains(title);
+  }
+
+  Future<void> _editAnnouncement(Map<String, dynamic> row) async {
+    final saved = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (_) => CreatePostScreen(announcement: row)),
+    );
+    if (saved == true && mounted) {
+      setState(() {});
+      _showMessage('Announcement updated.');
     }
   }
 
