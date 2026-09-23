@@ -13,12 +13,10 @@ class ResetPasswordScreen extends StatefulWidget {
 
 class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
   final _emailController = TextEditingController();
-  final _phoneController = TextEditingController();
   final _codeController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmController = TextEditingController();
 
-  String _method = 'email';
   String _target = '';
   bool _codeSent = false;
   bool _isLoading = false;
@@ -26,7 +24,6 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
   @override
   void dispose() {
     _emailController.dispose();
-    _phoneController.dispose();
     _codeController.dispose();
     _passwordController.dispose();
     _confirmController.dispose();
@@ -39,7 +36,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
       title: _codeSent ? 'Set a new password' : 'Forgot your password?',
       subtitle: _codeSent
           ? 'Enter the code sent to $_target, then choose your new password.'
-          : 'Choose where to receive your reset code.',
+          : 'Enter your registered email to receive a reset code.',
       step: _codeSent
           ? 'STEP 2 OF 2 · RESET PASSWORD'
           : 'STEP 1 OF 2 · RECOVERY',
@@ -47,22 +44,11 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           if (!_codeSent) ...[
-            _MethodToggle(
-              method: _method,
-              onChanged: (value) => setState(() => _method = value),
-            ),
-            const SizedBox(height: 24),
             AppInputField(
-              label: _method == 'email' ? 'Email address' : 'Phone number',
-              hintText: _method == 'email'
-                  ? 'you@example.com'
-                  : '+63 9XX XXX XXXX',
-              controller: _method == 'email'
-                  ? _emailController
-                  : _phoneController,
-              keyboardType: _method == 'email'
-                  ? TextInputType.emailAddress
-                  : TextInputType.phone,
+              label: 'Email address',
+              hintText: 'you@example.com',
+              controller: _emailController,
+              keyboardType: TextInputType.emailAddress,
             ),
             const SizedBox(height: 24),
             AppButton(
@@ -108,7 +94,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
             ),
             TextButton(
               onPressed: _isLoading ? null : _resetFlow,
-              child: const Text('Use a different method'),
+              child: const Text('Use a different email'),
             ),
           ],
         ],
@@ -118,25 +104,19 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
 
   Future<void> _sendCode() async {
     final email = _emailController.text.trim();
-    final phone = _phoneController.text.trim();
-    final target = _method == 'email' ? email : phone;
-    if (target.isEmpty) {
-      _showMessage(
-        _method == 'email' ? 'Enter your email.' : 'Enter your phone number.',
-      );
+    if (email.isEmpty) {
+      _showMessage('Enter your email.');
       return;
     }
 
     setState(() => _isLoading = true);
     try {
       final response = await MobileApiService.requestPasswordReset(
-        method: _method,
-        email: _method == 'email' ? email : null,
-        phone: _method == 'phone' ? phone : null,
+        email: email,
       );
       if (!mounted) return;
       setState(() {
-        _target = response['target']?.toString() ?? target;
+        _target = response['target']?.toString() ?? email;
         _codeSent = true;
       });
       _showMessage(response['message']?.toString() ?? 'Reset code sent.');
@@ -159,7 +139,6 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
     setState(() => _isLoading = true);
     try {
       final response = await MobileApiService.verifyPasswordReset(
-        method: _method,
         target: _target,
         code: code,
         password: password,
@@ -189,67 +168,5 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text(message)));
-  }
-}
-
-class _MethodToggle extends StatelessWidget {
-  final String method;
-  final ValueChanged<String> onChanged;
-
-  const _MethodToggle({required this.method, required this.onChanged});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(6),
-      decoration: BoxDecoration(
-        color: AppColors.field,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        children: [
-          _ToggleButton(
-            label: 'Email',
-            active: method == 'email',
-            onTap: () => onChanged('email'),
-          ),
-          _ToggleButton(
-            label: 'Phone',
-            active: method == 'phone',
-            onTap: () => onChanged('phone'),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ToggleButton extends StatelessWidget {
-  final String label;
-  final bool active;
-  final VoidCallback onTap;
-
-  const _ToggleButton({
-    required this.label,
-    required this.active,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: TextButton(
-        onPressed: onTap,
-        style: TextButton.styleFrom(
-          backgroundColor: active ? AppColors.primaryRed : Colors.transparent,
-          foregroundColor: active ? Colors.white : AppColors.primaryRed,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-          padding: const EdgeInsets.symmetric(vertical: 10),
-        ),
-        child: Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
-      ),
-    );
   }
 }

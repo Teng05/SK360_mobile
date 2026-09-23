@@ -169,20 +169,17 @@ class MobileApiService {
   }
 
   static Future<Map<String, dynamic>> requestPasswordReset({
-    required String method,
-    String? email,
-    String? phone,
+    required String email,
   }) {
     return _request(
       'POST',
       '/password/reset/request',
-      body: {'method': method, 'email': ?email, 'phone': ?phone},
+      body: {'method': 'email', 'email': email},
       requiresAuth: false,
     );
   }
 
   static Future<Map<String, dynamic>> verifyPasswordReset({
-    required String method,
     required String target,
     required String code,
     required String password,
@@ -192,7 +189,7 @@ class MobileApiService {
       'POST',
       '/password/reset/verify',
       body: {
-        'method': method,
+        'method': 'email',
         'target': target,
         'code': code,
         'password': password,
