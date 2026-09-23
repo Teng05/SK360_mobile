@@ -35,6 +35,9 @@ class _PresidentLeadershipScreenState extends State<PresidentLeadershipScreen> {
     final leaders = _filteredLeaders();
     final executives = leaders.where((leader) => leader.isExecutive).toList();
     final councilors = leaders.where((leader) => !leader.isExecutive).toList();
+    final hasSecretary = leaders.any(
+      (leader) => leader.position.toLowerCase().contains('secretary'),
+    );
 
     return Scaffold(
       key: _scaffoldKey,
@@ -58,16 +61,31 @@ class _PresidentLeadershipScreenState extends State<PresidentLeadershipScreen> {
                 subtitle: 'Barangay councils',
                 trailing: [
                   if (_isChairman)
-                    IconButton(
-                      onPressed: _isLoading ? null : _showAddCouncilDialog,
-                      tooltip: 'Add council member',
-                      style: IconButton.styleFrom(
-                        backgroundColor: AppColors.softPink,
-                      ),
-                      icon: const Icon(
-                        Icons.person_add_alt_1_outlined,
-                        color: AppColors.primaryRed,
-                      ),
+                    PopupMenuButton<String>(
+                      enabled: !_isLoading,
+                      tooltip: 'Add leadership member',
+                      icon: const Icon(Icons.person_add_alt_1_outlined),
+                      onSelected: (value) {
+                        if (value == 'councilor') _showAddCouncilDialog();
+                        if (value == 'secretary') _showAddSecretaryDialog();
+                      },
+                      itemBuilder: (_) => [
+                        const PopupMenuItem(
+                          value: 'councilor',
+                          child: ListTile(
+                            leading: Icon(Icons.groups_outlined),
+                            title: Text('Add SK Councilor'),
+                          ),
+                        ),
+                        if (!hasSecretary)
+                          const PopupMenuItem(
+                            value: 'secretary',
+                            child: ListTile(
+                              leading: Icon(Icons.manage_accounts_outlined),
+                              title: Text('Create Secretary Account'),
+                            ),
+                          ),
+                      ],
                     ),
                 ],
               ),
@@ -135,12 +153,14 @@ class _PresidentLeadershipScreenState extends State<PresidentLeadershipScreen> {
                 icon: Icons.verified_user_outlined,
                 emptyText: 'No executive officers found.',
                 leaders: executives,
+                onView: _showLeaderProfile,
               ),
               _Section(
                 title: 'SK Councilors',
                 icon: Icons.groups_outlined,
                 emptyText: 'No SK councilors found.',
                 leaders: councilors,
+                onView: _showLeaderProfile,
                 onEdit: _isChairman ? _showEditCouncilDialog : null,
               ),
             ],
@@ -198,6 +218,7 @@ class _PresidentLeadershipScreenState extends State<PresidentLeadershipScreen> {
             profilePictureUrl: map['profile_pic_url']?.toString(),
             email: map['email']?.toString() ?? '',
             phone: map['phone']?.toString() ?? '',
+            isVerified: '${map['is_verified'] ?? '1'}' == '1',
             isCouncilRecord: map['user_id'] == null,
           );
         })
@@ -456,6 +477,179 @@ class _PresidentLeadershipScreenState extends State<PresidentLeadershipScreen> {
     );
   }
 
+  Future<void> _showAddSecretaryDialog() async {
+    var firstName = '';
+    var lastName = '';
+    var email = '';
+    var phone = '';
+    var isSaving = false;
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          Future<void> submit() async {
+            if (firstName.trim().isEmpty ||
+                lastName.trim().isEmpty ||
+                email.trim().isEmpty) {
+              _showMessage('Complete the Secretary name and email.');
+              return;
+            }
+            setDialogState(() => isSaving = true);
+            try {
+              final response = await MobileApiService.createSecretaryAccount(
+                firstName: firstName,
+                lastName: lastName,
+                email: email,
+                phone: phone,
+              );
+              if (!mounted || !dialogContext.mounted) return;
+              Navigator.pop(dialogContext);
+              setState(() {});
+              _showMessage(
+                response['message']?.toString() ?? 'Secretary account created.',
+              );
+            } on MobileApiException catch (exception) {
+              if (mounted) _showMessage(exception.message);
+              if (dialogContext.mounted) setDialogState(() => isSaving = false);
+            }
+          }
+
+          return AlertDialog(
+            icon: const AppIconTile(icon: Icons.manage_accounts_outlined),
+            title: const Text('Create Secretary Account'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    decoration: _decoration('First name'),
+                    onChanged: (value) => firstName = value,
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    decoration: _decoration('Last name'),
+                    onChanged: (value) => lastName = value,
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    decoration: _decoration('Email'),
+                    keyboardType: TextInputType.emailAddress,
+                    onChanged: (value) => email = value,
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    decoration: _decoration('Phone (optional)'),
+                    keyboardType: TextInputType.phone,
+                    onChanged: (value) => phone = value,
+                  ),
+                  const SizedBox(height: 14),
+                  const Text(
+                    'A password setup link will be emailed to the Secretary. The account stays inactive until setup is completed.',
+                    style: TextStyle(color: AppColors.lightText, fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: isSaving ? null : () => Navigator.pop(dialogContext),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: isSaving ? null : submit,
+                child: Text(isSaving ? 'Creating...' : 'Create Account'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  void _showLeaderProfile(_Leader leader) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(24, 4, 24, 28),
+          child: Column(
+            children: [
+              CircleAvatar(
+                radius: 54,
+                backgroundColor: AppColors.softPink,
+                backgroundImage: leader.profilePictureUrl?.isNotEmpty == true
+                    ? NetworkImage(leader.profilePictureUrl!)
+                    : null,
+                child: leader.profilePictureUrl?.isNotEmpty == true
+                    ? null
+                    : Text(
+                        leader.initials,
+                        style: const TextStyle(
+                          fontSize: 28,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.primaryRed,
+                        ),
+                      ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                leader.name,
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 4),
+              AppStatusBadge(
+                label: leader.position,
+                color: AppColors.primaryRed,
+              ),
+              const SizedBox(height: 22),
+              _ProfileDetail(
+                icon: Icons.location_city_outlined,
+                label: 'Barangay',
+                value: leader.barangay,
+              ),
+              _ProfileDetail(
+                icon: Icons.event_repeat_outlined,
+                label: 'Term',
+                value: leader.term,
+              ),
+              _ProfileDetail(
+                icon: Icons.flag_outlined,
+                label: 'Status',
+                value: _readable(leader.status),
+              ),
+              _ProfileDetail(
+                icon: Icons.email_outlined,
+                label: 'Email',
+                value: leader.email,
+              ),
+              _ProfileDetail(
+                icon: Icons.phone_outlined,
+                label: 'Phone',
+                value: leader.phone,
+              ),
+              if (!leader.isCouncilRecord)
+                _ProfileDetail(
+                  icon: leader.isVerified
+                      ? Icons.verified_user_outlined
+                      : Icons.pending_outlined,
+                  label: 'Account',
+                  value: leader.isVerified
+                      ? 'Verified'
+                      : 'Pending account setup',
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<File?> _pickCouncilPhoto() async {
     final selected = await ImagePicker().pickImage(
       source: ImageSource.gallery,
@@ -582,6 +776,7 @@ class _Section extends StatelessWidget {
   final String emptyText;
   final List<_Leader> leaders;
   final ValueChanged<_Leader>? onEdit;
+  final ValueChanged<_Leader>? onView;
 
   const _Section({
     required this.title,
@@ -589,6 +784,7 @@ class _Section extends StatelessWidget {
     required this.emptyText,
     required this.leaders,
     this.onEdit,
+    this.onView,
   });
 
   @override
@@ -619,7 +815,11 @@ class _Section extends StatelessWidget {
                 for (final leader in leaders)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 10),
-                    child: _LeaderCard(leader: leader, onEdit: onEdit),
+                    child: _LeaderCard(
+                      leader: leader,
+                      onEdit: onEdit,
+                      onView: onView,
+                    ),
                   ),
               ],
             ),
@@ -632,103 +832,149 @@ class _Section extends StatelessWidget {
 class _LeaderCard extends StatelessWidget {
   final _Leader leader;
   final ValueChanged<_Leader>? onEdit;
+  final ValueChanged<_Leader>? onView;
 
-  const _LeaderCard({required this.leader, this.onEdit});
+  const _LeaderCard({required this.leader, this.onEdit, this.onView});
 
   @override
   Widget build(BuildContext context) {
     final hasPhoto = leader.profilePictureUrl?.isNotEmpty == true;
     final accent = leader.isExecutive ? AppColors.primaryRed : AppColors.info;
     final current = leader.status.toLowerCase() == 'current';
-    return AppAccentCard(
-      accent: leader.isExecutive ? AppColors.primaryRed : AppColors.border,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(2.5),
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: leader.isExecutive
-                    ? AppColors.gold
-                    : accent.withValues(alpha: .3),
-                width: 2,
+    return InkWell(
+      borderRadius: BorderRadius.circular(AppSpace.radius),
+      onTap: onView == null ? null : () => onView!(leader),
+      child: AppAccentCard(
+        accent: leader.isExecutive ? AppColors.primaryRed : AppColors.border,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(2.5),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: leader.isExecutive
+                      ? AppColors.gold
+                      : accent.withValues(alpha: .3),
+                  width: 2,
+                ),
+              ),
+              child: CircleAvatar(
+                radius: 26,
+                backgroundColor: accent.withValues(alpha: .1),
+                backgroundImage: hasPhoto
+                    ? NetworkImage(leader.profilePictureUrl!)
+                    : null,
+                child: hasPhoto
+                    ? null
+                    : Text(
+                        leader.initials,
+                        style: TextStyle(
+                          color: accent,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
               ),
             ),
-            child: CircleAvatar(
-              radius: 26,
-              backgroundColor: accent.withValues(alpha: .1),
-              backgroundImage: hasPhoto
-                  ? NetworkImage(leader.profilePictureUrl!)
-                  : null,
-              child: hasPhoto
-                  ? null
-                  : Text(
-                      leader.initials,
-                      style: TextStyle(
-                        color: accent,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w800,
-                      ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    leader.position.toUpperCase(),
+                    style: TextStyle(
+                      color: leader.isExecutive
+                          ? AppColors.actionRed
+                          : AppColors.info,
+                      fontSize: 11.5,
+                      letterSpacing: .6,
+                      fontWeight: FontWeight.w800,
                     ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    leader.name,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  AppMeta(
+                    icon: Icons.location_city_outlined,
+                    label: 'Barangay ${leader.barangay}',
+                    color: AppColors.primaryRed,
+                  ),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      AppStatusBadge(
+                        label: 'Term ${leader.term}',
+                        color: AppColors.info,
+                        icon: Icons.event_repeat_outlined,
+                      ),
+                      AppStatusBadge(
+                        label: _readable(leader.status),
+                        color: current ? AppColors.success : AppColors.muted,
+                        dot: true,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
-          ),
-          const SizedBox(width: 14),
+            if (onEdit != null && leader.isCouncilRecord)
+              IconButton(
+                tooltip: 'Edit councilor',
+                onPressed: () => onEdit!(leader),
+                icon: const Icon(Icons.edit_outlined),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ProfileDetail extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+
+  const _ProfileDetail({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: AppDecorations.inset(),
+      child: Row(
+        children: [
+          Icon(icon, color: AppColors.primaryRed, size: 20),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                Text(label, style: Theme.of(context).textTheme.labelSmall),
+                const SizedBox(height: 2),
                 Text(
-                  leader.position.toUpperCase(),
-                  style: TextStyle(
-                    color: leader.isExecutive
-                        ? AppColors.actionRed
-                        : AppColors.info,
-                    fontSize: 11.5,
-                    letterSpacing: .6,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  leader.name,
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                AppMeta(
-                  icon: Icons.location_city_outlined,
-                  label: 'Barangay ${leader.barangay}',
-                  color: AppColors.primaryRed,
-                ),
-                const SizedBox(height: 10),
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  children: [
-                    AppStatusBadge(
-                      label: 'Term ${leader.term}',
-                      color: AppColors.info,
-                      icon: Icons.event_repeat_outlined,
-                    ),
-                    AppStatusBadge(
-                      label: _readable(leader.status),
-                      color: current ? AppColors.success : AppColors.muted,
-                      dot: true,
-                    ),
-                  ],
+                  value.trim().isEmpty ? 'Not provided' : value,
+                  style: Theme.of(context).textTheme.titleSmall,
                 ),
               ],
             ),
           ),
-          if (onEdit != null && leader.isCouncilRecord)
-            IconButton(
-              tooltip: 'Edit councilor',
-              onPressed: () => onEdit!(leader),
-              icon: const Icon(Icons.edit_outlined),
-            ),
         ],
       ),
     );
@@ -817,6 +1063,7 @@ class _Leader {
   final String email;
   final String phone;
   final bool isCouncilRecord;
+  final bool isVerified;
 
   const _Leader({
     this.id,
@@ -830,6 +1077,7 @@ class _Leader {
     this.email = '',
     this.phone = '',
     this.isCouncilRecord = false,
+    this.isVerified = true,
   });
 
   bool get isExecutive {

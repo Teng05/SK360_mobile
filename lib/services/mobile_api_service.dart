@@ -561,6 +561,26 @@ class MobileApiService {
     return response;
   }
 
+  static Future<Map<String, dynamic>> createSecretaryAccount({
+    required String firstName,
+    required String lastName,
+    required String email,
+    String? phone,
+  }) async {
+    final response = await _request(
+      'POST',
+      '/leadership/secretary',
+      body: {
+        'first_name': firstName.trim(),
+        'last_name': lastName.trim(),
+        'email': email.trim(),
+        if (phone != null && phone.trim().isNotEmpty) 'phone': phone.trim(),
+      },
+    );
+    await sync();
+    return response;
+  }
+
   static String _imageContentType(String path) {
     final extension = path.split('.').last.toLowerCase();
     return switch (extension) {
