@@ -21,6 +21,8 @@ class _PresidentLeadershipScreenState extends State<PresidentLeadershipScreen> {
   bool _isLoading = false;
   String? _loadError;
   String _selectedBarangayId = 'all';
+  String _nameSearch = '';
+  int _activeTab = 0;
   @override
   void initState() {
     super.initState();
@@ -32,7 +34,9 @@ class _PresidentLeadershipScreenState extends State<PresidentLeadershipScreen> {
   @override
   Widget build(BuildContext context) {
     final barangays = _barangays();
-    final leaders = _filteredLeaders();
+    final leaders = _activeTab == 0
+        ? _filteredLeaders()
+        : _filteredHistoryLeaders();
     final executives = leaders.where((leader) => leader.isExecutive).toList();
     final councilors = leaders.where((leader) => !leader.isExecutive).toList();
     final hasSecretary = leaders.any(
@@ -60,7 +64,7 @@ class _PresidentLeadershipScreenState extends State<PresidentLeadershipScreen> {
                 title: 'Leadership',
                 subtitle: 'Barangay councils',
                 trailing: [
-                  if (_isChairman)
+                  if (_isChairman || _isPresident)
                     PopupMenuButton<String>(
                       enabled: !_isLoading,
                       tooltip: 'Add leadership member',
@@ -68,16 +72,26 @@ class _PresidentLeadershipScreenState extends State<PresidentLeadershipScreen> {
                       onSelected: (value) {
                         if (value == 'councilor') _showAddCouncilDialog();
                         if (value == 'secretary') _showAddSecretaryDialog();
+                        if (value == 'chairman') _showAddChairmanDialog();
                       },
                       itemBuilder: (_) => [
-                        const PopupMenuItem(
-                          value: 'councilor',
-                          child: ListTile(
-                            leading: Icon(Icons.groups_outlined),
-                            title: Text('Add SK Councilor'),
+                        if (_isPresident)
+                          const PopupMenuItem(
+                            value: 'chairman',
+                            child: ListTile(
+                              leading: Icon(Icons.shield_outlined),
+                              title: Text('Create Chairman Account'),
+                            ),
                           ),
-                        ),
-                        if (!hasSecretary)
+                        if (_isChairman)
+                          const PopupMenuItem(
+                            value: 'councilor',
+                            child: ListTile(
+                              leading: Icon(Icons.groups_outlined),
+                              title: Text('Add SK Councilor'),
+                            ),
+                          ),
+                        if (_isChairman && !hasSecretary)
                           const PopupMenuItem(
                             value: 'secretary',
                             child: ListTile(
@@ -104,6 +118,23 @@ class _PresidentLeadershipScreenState extends State<PresidentLeadershipScreen> {
                 subtitle:
                     'Executive officers and SK councilors serving each '
                     'barangay.',
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+                child: AppFilterPills(
+                  labels: const ['Current Leadership', 'Leadership History'],
+                  selectedIndex: _activeTab,
+                  onSelected: (index) => setState(() => _activeTab = index),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                child: TextField(
+                  decoration: _decoration(
+                    'Search by name',
+                  ).copyWith(prefixIcon: const Icon(Icons.search)),
+                  onChanged: (value) => setState(() => _nameSearch = value),
+                ),
               ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
@@ -157,11 +188,17 @@ class _PresidentLeadershipScreenState extends State<PresidentLeadershipScreen> {
               ),
               _Section(
                 title: 'SK Councilors',
-                icon: Icons.groups_outlined,
-                emptyText: 'No SK councilors found.',
+                icon: _activeTab == 0
+                    ? Icons.groups_outlined
+                    : Icons.history_rounded,
+                emptyText: _activeTab == 0
+                    ? 'No SK councilors found.'
+                    : 'No historical SK councilors found.',
                 leaders: councilors,
                 onView: _showLeaderProfile,
-                onEdit: _isChairman ? _showEditCouncilDialog : null,
+                onEdit: _isChairman && _activeTab == 0
+                    ? _showEditCouncilDialog
+                    : null,
               ),
             ],
           ),
@@ -224,15 +261,87 @@ class _PresidentLeadershipScreenState extends State<PresidentLeadershipScreen> {
         })
         .where((leader) {
           if (_isLocalOfficial && currentBarangayId.isNotEmpty) {
-            return leader.barangayId == currentBarangayId;
+            return leader.barangayId == currentBarangayId &&
+                leader.name.toLowerCase().contains(
+                  _nameSearch.trim().toLowerCase(),
+                );
           }
 
-          return _selectedBarangayId == 'all' ||
-              leader.barangayId == _selectedBarangayId;
+          return (_selectedBarangayId == 'all' ||
+                  leader.barangayId == _selectedBarangayId) &&
+              leader.name.toLowerCase().contains(
+                _nameSearch.trim().toLowerCase(),
+              );
         })
         .toList();
 
     leaders.sort((a, b) {
+      final barangayCompare = a.barangay.compareTo(b.barangay);
+      if (barangayCompare != 0) return barangayCompare;
+      return a.position.compareTo(b.position);
+    });
+
+    return leaders;
+  }
+
+  List<_Leader> _filteredHistoryLeaders() {
+    final barangayNames = {
+      for (final barangay in _barangays()) barangay.id: barangay.name,
+    };
+    final history =
+        MobileApiService.syncedData?['leadership_history'] as List<dynamic>? ??
+        [];
+    final currentBarangayId = _currentBarangayId;
+    final leaders = <_Leader>[];
+
+    for (final termEntry in history) {
+      final termMap = Map<String, dynamic>.from(termEntry as Map);
+      final termLabel = termMap['term']?.toString() ?? 'Completed term';
+      final members = termMap['members'] as List<dynamic>? ?? [];
+
+      for (final row in members) {
+        final map = Map<String, dynamic>.from(row as Map);
+        final barangayId = '${map['barangay_id']}';
+
+        if (_isLocalOfficial && currentBarangayId.isNotEmpty) {
+          if (barangayId != currentBarangayId) continue;
+        } else if (_selectedBarangayId != 'all' &&
+            barangayId != _selectedBarangayId) {
+          continue;
+        }
+
+        if (_nameSearch.trim().isNotEmpty &&
+            !(_firstValue(map, [
+              'full_name',
+              'name',
+            ], '').toLowerCase().contains(_nameSearch.trim().toLowerCase()))) {
+          continue;
+        }
+
+        leaders.add(
+          _Leader(
+            id: int.tryParse('${map['leadership_id']}'),
+            name: _firstValue(map, ['full_name', 'name'], 'Unnamed official'),
+            position: _positionLabel(
+              _firstValue(map, ['position'], 'SK Councilor'),
+            ),
+            barangayId: barangayId,
+            barangay: barangayNames[barangayId] ?? 'Unknown Barangay',
+            term: _termLabel(map).isEmpty ? termLabel : _termLabel(map),
+            status: _firstValue(map, ['status'], 'completed'),
+            profilePictureUrl: map['profile_pic_url']?.toString(),
+            email: map['email']?.toString() ?? '',
+            phone: map['phone']?.toString() ?? '',
+            isVerified: '${map['is_verified'] ?? '1'}' == '1',
+            isCouncilRecord: map['user_id'] == null,
+          ),
+        );
+      }
+    }
+
+    leaders.sort((a, b) {
+      final termCompare = b.term.compareTo(a.term);
+      if (termCompare != 0) return termCompare;
       final barangayCompare = a.barangay.compareTo(b.barangay);
       if (barangayCompare != 0) return barangayCompare;
       return a.position.compareTo(b.position);
@@ -266,13 +375,28 @@ class _PresidentLeadershipScreenState extends State<PresidentLeadershipScreen> {
     ).showSnackBar(SnackBar(content: Text(message)));
   }
 
+  String get _currentTermLabel {
+    final rows =
+        MobileApiService.syncedData?['leadership_profiles'] as List<dynamic>? ??
+        [];
+
+    for (final row in rows) {
+      final map = Map<String, dynamic>.from(row as Map);
+      final term = _termLabel(map);
+      if (term.isNotEmpty && term != 'N/A') return term;
+    }
+
+    return '2024-2026';
+  }
+
   Future<void> _showAddCouncilDialog() async {
     var name = '';
     var email = '';
     var phone = '';
-    var term = '2023-2026';
+    var term = _currentTermLabel;
     bool isSaving = false;
     File? profilePicture;
+    final termController = TextEditingController(text: term);
 
     await showDialog<void>(
       context: context,
@@ -348,7 +472,10 @@ class _PresidentLeadershipScreenState extends State<PresidentLeadershipScreen> {
                     ),
                     const SizedBox(height: 10),
                     TextField(
-                      decoration: _decoration('Term (default 2023-2026)'),
+                      controller: termController,
+                      decoration: _decoration(
+                        'Term (default $_currentTermLabel)',
+                      ),
                       textInputAction: TextInputAction.done,
                       onChanged: (value) => term = value,
                       onSubmitted: (_) {
@@ -375,6 +502,7 @@ class _PresidentLeadershipScreenState extends State<PresidentLeadershipScreen> {
         );
       },
     );
+    termController.dispose();
   }
 
   Future<void> _showEditCouncilDialog(_Leader leader) async {
@@ -482,7 +610,9 @@ class _PresidentLeadershipScreenState extends State<PresidentLeadershipScreen> {
     var lastName = '';
     var email = '';
     var phone = '';
+    var term = _currentTermLabel;
     var isSaving = false;
+    final termController = TextEditingController(text: term);
 
     await showDialog<void>(
       context: context,
@@ -502,6 +632,7 @@ class _PresidentLeadershipScreenState extends State<PresidentLeadershipScreen> {
                 lastName: lastName,
                 email: email,
                 phone: phone,
+                term: term,
               );
               if (!mounted || !dialogContext.mounted) return;
               Navigator.pop(dialogContext);
@@ -543,9 +674,129 @@ class _PresidentLeadershipScreenState extends State<PresidentLeadershipScreen> {
                     keyboardType: TextInputType.phone,
                     onChanged: (value) => phone = value,
                   ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: termController,
+                    decoration: _decoration(
+                      'Term (default $_currentTermLabel)',
+                    ),
+                    textInputAction: TextInputAction.done,
+                    onChanged: (value) => term = value,
+                  ),
                   const SizedBox(height: 14),
                   const Text(
                     'A password setup link will be emailed to the Secretary. The account stays inactive until setup is completed.',
+                    style: TextStyle(color: AppColors.lightText, fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: isSaving ? null : () => Navigator.pop(dialogContext),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: isSaving ? null : submit,
+                child: Text(isSaving ? 'Creating...' : 'Create Account'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    termController.dispose();
+  }
+
+  Future<void> _showAddChairmanDialog() async {
+    final barangays = _barangays();
+    if (barangays.isEmpty) {
+      _showMessage('No barangays are available.');
+      return;
+    }
+    var selectedBarangayId = _selectedBarangayId == 'all'
+        ? barangays.first.id
+        : _selectedBarangayId;
+    var fullName = '';
+    var email = '';
+    var phone = '';
+    var isSaving = false;
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          Future<void> submit() async {
+            final nameParts = fullName.trim().split(RegExp(r'\s+'));
+            if (nameParts.length < 2 || email.trim().isEmpty) {
+              _showMessage('Complete the Chairman name and email.');
+              return;
+            }
+            setDialogState(() => isSaving = true);
+            try {
+              final response = await MobileApiService.createChairmanAccount(
+                firstName: nameParts.first,
+                lastName: nameParts.skip(1).join(' '),
+                email: email,
+                phone: phone,
+                barangayId: int.parse(selectedBarangayId),
+              );
+              if (!mounted || !dialogContext.mounted) return;
+              Navigator.pop(dialogContext);
+              setState(() {});
+              _showMessage(
+                response['message']?.toString() ?? 'Chairman account created.',
+              );
+            } on MobileApiException catch (exception) {
+              if (mounted) _showMessage(exception.message);
+              if (dialogContext.mounted) setDialogState(() => isSaving = false);
+            }
+          }
+
+          return AlertDialog(
+            icon: const AppIconTile(icon: Icons.shield_outlined),
+            title: const Text('Create Chairman Account'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  DropdownButtonFormField<String>(
+                    initialValue: selectedBarangayId,
+                    decoration: _decoration('Barangay'),
+                    items: barangays
+                        .map(
+                          (barangay) => DropdownMenuItem(
+                            value: barangay.id,
+                            child: Text(barangay.name),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: isSaving
+                        ? null
+                        : (value) => setDialogState(() {
+                            if (value != null) selectedBarangayId = value;
+                          }),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    decoration: _decoration('Full name'),
+                    onChanged: (value) => fullName = value,
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    decoration: _decoration('Email address'),
+                    keyboardType: TextInputType.emailAddress,
+                    onChanged: (value) => email = value,
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    decoration: _decoration('Phone (optional)'),
+                    keyboardType: TextInputType.phone,
+                    onChanged: (value) => phone = value,
+                  ),
+                  const SizedBox(height: 14),
+                  const Text(
+                    'A password setup link will be emailed to the Chairman. The account stays inactive until setup is completed.',
                     style: TextStyle(color: AppColors.lightText, fontSize: 12),
                   ),
                 ],
@@ -689,6 +940,11 @@ class _PresidentLeadershipScreenState extends State<PresidentLeadershipScreen> {
   bool get _isChairman {
     final role = MobileApiService.currentUser?['role']?.toString() ?? '';
     return role == 'sk_chairman';
+  }
+
+  bool get _isPresident {
+    final role = MobileApiService.currentUser?['role']?.toString() ?? '';
+    return role == 'sk_president';
   }
 
   bool get _isLocalOfficial {

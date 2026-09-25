@@ -905,6 +905,7 @@ class AppInputField extends StatefulWidget {
   final int? maxLength;
   final bool enabled;
   final TextCapitalization textCapitalization;
+  final List<TextInputFormatter>? inputFormatters;
   const AppInputField({
     super.key,
     required this.label,
@@ -920,6 +921,7 @@ class AppInputField extends StatefulWidget {
     this.maxLength,
     this.enabled = true,
     this.textCapitalization = TextCapitalization.none,
+    this.inputFormatters,
   });
   @override
   State<AppInputField> createState() => _AppInputFieldState();
@@ -951,10 +953,10 @@ class _AppInputFieldState extends State<AppInputField> {
         maxLength: widget.maxLength,
         autocorrect: !widget.isPassword,
         enableSuggestions: !widget.isPassword,
-        inputFormatters:
-            widget.maxLength == 6 && widget.keyboardType == TextInputType.number
-            ? [FilteringTextInputFormatter.digitsOnly]
-            : null,
+        inputFormatters: widget.inputFormatters ??
+            (widget.maxLength == 6 && widget.keyboardType == TextInputType.number
+                ? [FilteringTextInputFormatter.digitsOnly]
+                : null),
         decoration: InputDecoration(
           hintText: widget.hintText,
           counterText: '',

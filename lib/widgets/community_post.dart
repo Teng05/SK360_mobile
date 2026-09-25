@@ -1,17 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../services/mobile_api_service.dart';
 import '../ui/app_ui.dart';
 import 'community_avatar.dart';
 
 class CommunityPostCard extends StatefulWidget {
   final Map<String, dynamic> post;
   final Future<void> Function()? onLike;
+  final Future<void> Function()? onCommentChanged;
   final VoidCallback? onEdit;
   const CommunityPostCard({
     super.key,
     required this.post,
     this.onLike,
+    this.onCommentChanged,
     this.onEdit,
   });
 
@@ -33,6 +36,7 @@ class _CommunityPostCardState extends State<CommunityPostCard> {
         post['liked_by_current_user'] == true ||
         post['liked_by_current_user'] == 1;
     final likes = int.tryParse('${post['likes_count'] ?? 0}') ?? 0;
+    final comments = int.tryParse('${post['feedback_count'] ?? 0}') ?? 0;
     final categoryColor = postCategoryColor(category);
     final officialsOnly = post['visibility'] == 'officials_only';
     return Padding(
@@ -165,7 +169,8 @@ class _CommunityPostCardState extends State<CommunityPostCard> {
                   const SizedBox(width: 7),
                   Expanded(
                     child: Text(
-                      '$likes ${likes == 1 ? 'like' : 'likes'}',
+                      '$likes ${likes == 1 ? 'like' : 'likes'} · '
+                      '$comments ${comments == 1 ? 'comment' : 'comments'}',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         fontWeight: FontWeight.w700,
                       ),
@@ -194,15 +199,12 @@ class _CommunityPostCardState extends State<CommunityPostCard> {
                         ),
                       ),
                       Expanded(
-                        child: Tooltip(
-                          message: 'Comments are not available yet',
-                          child: _action(
-                            context,
-                            'Comment',
-                            Icons.mode_comment_outlined,
-                            null,
-                            compact,
-                          ),
+                        child: _action(
+                          context,
+                          'Comment',
+                          Icons.mode_comment_outlined,
+                          _showComments,
+                          compact,
                         ),
                       ),
                     ],
@@ -272,6 +274,238 @@ class _CommunityPostCardState extends State<CommunityPostCard> {
       ).showSnackBar(const SnackBar(content: Text('Post copied.')));
     }
   }
+
+  Future<void> _showComments() async {
+    final id = int.tryParse(
+      '${widget.post['announcement_id'] ?? widget.post['id'] ?? ''}',
+    );
+    if (id == null) return;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) => _CommentsSheet(
+        announcementId: id,
+        title: widget.post['title']?.toString() ?? 'Post comments',
+        onCommentPosted: widget.onCommentChanged,
+      ),
+    );
+  }
+}
+
+class _CommentsSheet extends StatefulWidget {
+  final int announcementId;
+  final String title;
+  final Future<void> Function()? onCommentPosted;
+
+  const _CommentsSheet({
+    required this.announcementId,
+    required this.title,
+    this.onCommentPosted,
+  });
+
+  @override
+  State<_CommentsSheet> createState() => _CommentsSheetState();
+}
+
+class _CommentsSheetState extends State<_CommentsSheet> {
+  final TextEditingController _controller = TextEditingController();
+  late Future<List<Map<String, dynamic>>> _commentsFuture;
+  bool _posting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _commentsFuture = _loadComments();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<List<Map<String, dynamic>>> _loadComments() async {
+    final response = await MobileApiService.wallPostComments(
+      widget.announcementId,
+    );
+    final rows = response['feedbacks'] as List<dynamic>? ?? [];
+    return rows.map((row) => Map<String, dynamic>.from(row as Map)).toList();
+  }
+
+  Future<void> _postComment() async {
+    final comment = _controller.text.trim();
+    if (comment.isEmpty || _posting) return;
+
+    setState(() => _posting = true);
+    try {
+      await MobileApiService.storeWallPostComment(
+        announcementId: widget.announcementId,
+        comment: comment,
+      );
+      _controller.clear();
+      await widget.onCommentPosted?.call();
+      if (mounted) {
+        setState(() => _commentsFuture = _loadComments());
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(_friendlyError(error))),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _posting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(16, 14, 16, 16 + bottomInset),
+      child: SizedBox(
+        height: MediaQuery.sizeOf(context).height * .74,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 42,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.border,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(widget.title, style: Theme.of(context).textTheme.titleLarge),
+            const SizedBox(height: 4),
+            Text('Comments', style: Theme.of(context).textTheme.bodySmall),
+            const SizedBox(height: 14),
+            Expanded(
+              child: FutureBuilder<List<Map<String, dynamic>>>(
+                future: _commentsFuture,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  if (snapshot.hasError) {
+                    return AppEmptyState(
+                      icon: Icons.cloud_off_outlined,
+                      title: 'Unable to load comments',
+                      message: _friendlyError(snapshot.error),
+                    );
+                  }
+                  final comments = snapshot.data ?? [];
+                  if (comments.isEmpty) {
+                    return const AppEmptyState(
+                      icon: Icons.mode_comment_outlined,
+                      title: 'No comments yet',
+                      message: 'Be the first to comment on this post.',
+                    );
+                  }
+                  return ListView.separated(
+                    itemCount: comments.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 10),
+                    itemBuilder: (context, index) {
+                      final comment = comments[index];
+                      final name = comment['name']?.toString() ?? 'SK Official';
+                      final role = comment['role_label']?.toString();
+                      final barangay = comment['barangay_name']?.toString();
+                      return DecoratedBox(
+                        decoration: AppDecorations.inset(),
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              CommunityAvatar(name: name),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      name,
+                                      style: Theme.of(
+                                        context,
+                                      ).textTheme.titleSmall,
+                                    ),
+                                    if (role != null && role.isNotEmpty)
+                                      Text(
+                                        [
+                                          role,
+                                          if (barangay != null &&
+                                              barangay.isNotEmpty)
+                                            'Barangay $barangay',
+                                        ].join(' · '),
+                                        style: Theme.of(
+                                          context,
+                                        ).textTheme.bodySmall,
+                                      ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      comment['comment']?.toString() ?? '',
+                                      style: Theme.of(
+                                        context,
+                                      ).textTheme.bodyMedium,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  );
+                },
+              ),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _controller,
+                    minLines: 1,
+                    maxLines: 4,
+                    textInputAction: TextInputAction.newline,
+                    decoration: const InputDecoration(
+                      hintText: 'Write a comment...',
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                FilledButton(
+                  onPressed: _posting ? null : _postComment,
+                  child: _posting
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.send_rounded),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+String _friendlyError(Object? error) {
+  if (error is MobileApiException) return error.message;
+  return 'Please check your connection and try again.';
 }
 
 /// Category tones: announcements red, accomplishments green, events blue,

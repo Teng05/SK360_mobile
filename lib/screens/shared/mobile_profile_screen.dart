@@ -321,6 +321,15 @@ class _EditProfilePageState extends State<_EditProfilePage> {
       );
       return;
     }
+    if (type == 'email' &&
+        !RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(value)) {
+      setState(() => _error = 'Enter a valid email address.');
+      return;
+    }
+    if (type == 'phone' && !RegExp(r'^09\d{9}$').hasMatch(value)) {
+      setState(() => _error = 'Phone number must be 11 digits and start with 09.');
+      return;
+    }
     if (value == original) {
       setState(
         () => _error =
@@ -570,6 +579,7 @@ class _EditProfilePageState extends State<_EditProfilePage> {
             controller: _phoneController,
             hint: 'Phone number',
             keyboardType: TextInputType.phone,
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
           ),
           const SizedBox(height: 8),
           OutlinedButton.icon(
@@ -789,6 +799,7 @@ class _ProfileInput extends StatelessWidget {
   final int? maxLength;
   final ValueChanged<String>? onSubmitted;
   final bool enabled;
+  final List<TextInputFormatter>? inputFormatters;
 
   const _ProfileInput({
     required this.controller,
@@ -800,6 +811,7 @@ class _ProfileInput extends StatelessWidget {
     this.maxLength,
     this.onSubmitted,
     this.enabled = true,
+    this.inputFormatters,
   });
 
   @override
@@ -813,6 +825,7 @@ class _ProfileInput extends StatelessWidget {
       textInputAction: textInputAction,
       textCapitalization: textCapitalization,
       maxLength: maxLength,
+      inputFormatters: inputFormatters,
       enabled: enabled,
       onSubmitted: onSubmitted,
     );

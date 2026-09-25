@@ -145,9 +145,7 @@ class _OfficialSubmissionScreenState extends State<OfficialSubmissionScreen>
                       ...submissions.map(
                         (row) => _SubmissionTile(
                           row: row,
-                          onTap: widget.kind == SubmissionKind.budget
-                              ? () => _openFinancialRecord(row)
-                              : null,
+                          onTap: () => _openFinancialRecord(row),
                         ),
                       ),
                   ],
@@ -219,6 +217,7 @@ class _OfficialSubmissionScreenState extends State<OfficialSubmissionScreen>
           title: slot['title']?.toString() ?? _title,
           kind: widget.kind,
           pickPdf: _pickPdf,
+          initialReportType: slot['budget_period_type']?.toString(),
         ),
       ),
     );
@@ -322,11 +321,13 @@ class _SubmissionFormPage extends StatefulWidget {
   final String title;
   final SubmissionKind kind;
   final Future<PdfUpload?> Function() pickPdf;
+  final String? initialReportType;
 
   const _SubmissionFormPage({
     required this.title,
     required this.kind,
     required this.pickPdf,
+    this.initialReportType,
   });
 
   @override
@@ -343,7 +344,11 @@ class _SubmissionFormPageState extends State<_SubmissionFormPage> {
   @override
   void initState() {
     super.initState();
-    _reportType = widget.kind == SubmissionKind.budget ? 'annual' : 'monthly';
+    _reportType = widget.kind == SubmissionKind.budget
+        ? (widget.initialReportType?.isNotEmpty == true
+              ? widget.initialReportType!
+              : 'annual')
+        : 'monthly';
   }
 
   @override
@@ -373,16 +378,21 @@ class _SubmissionFormPageState extends State<_SubmissionFormPage> {
           if (widget.kind == SubmissionKind.budget)
             DropdownButtonFormField<String>(
               isExpanded: true,
-              initialValue: _reportType,
+              initialValue:
+                  const ['monthly', 'quarterly', 'annual'].contains(_reportType)
+                  ? _reportType
+                  : 'annual',
               decoration: const InputDecoration(labelText: 'Period type'),
               items: const [
                 DropdownMenuItem(value: 'monthly', child: Text('Monthly')),
                 DropdownMenuItem(value: 'quarterly', child: Text('Quarterly')),
                 DropdownMenuItem(value: 'annual', child: Text('Annual')),
               ],
-              onChanged: (value) {
-                if (value != null) setState(() => _reportType = value);
-              },
+              onChanged: widget.initialReportType?.isNotEmpty == true
+                  ? null
+                  : (value) {
+                      if (value != null) setState(() => _reportType = value);
+                    },
             ),
           if (widget.kind == SubmissionKind.budget &&
               _reportType == 'quarterly') ...[
@@ -547,6 +557,23 @@ class _SlotTile extends StatelessWidget {
               label: '${slot['start_date'] ?? ''} to ${slot['end_date'] ?? ''}',
               color: AppColors.info,
             ),
+            if (isBudget &&
+                (slot['budget_category']?.toString().isNotEmpty == true ||
+                    slot['budget_period_type']?.toString().isNotEmpty ==
+                        true)) ...[
+              const SizedBox(height: 6),
+              AppMeta(
+                icon: Icons.category_outlined,
+                label:
+                    [
+                          slot['budget_category']?.toString(),
+                          slot['budget_period_type']?.toString(),
+                        ]
+                        .where((value) => value != null && value.isNotEmpty)
+                        .join(' · '),
+                color: AppColors.info,
+              ),
+            ],
             const SizedBox(height: 14),
             SizedBox(
               width: double.infinity,
@@ -576,14 +603,17 @@ class _SubmissionTile extends StatelessWidget {
         row['title']?.toString() ??
         row['report_title']?.toString() ??
         'Submission';
-    final status = row['status']?.toString() ?? 'submitted';
+    final status =
+        row['quality_status']?.toString() ??
+        row['status']?.toString() ??
+        'submitted';
     final date =
         row['submitted_at']?.toString() ??
         row['created_at']?.toString() ??
         'No date';
-    final color = status == 'rejected'
+    final color = status == 'needs_revision' || status == 'rejected'
         ? AppColors.error
-        : status == 'pending'
+        : status == 'pending' || status == 'submitted'
         ? AppColors.warning
         : AppColors.success;
     return InkWell(
@@ -664,7 +694,8 @@ class _FinancialRecordDetailsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final title = _value(['title', 'report_title']);
-    final status = _value(['status']);
+    final status = _value(['quality_status', 'status']);
+    final qualityRemarks = _value(['quality_remarks']);
     final year = _value(['fiscal_year', 'reporting_year']);
     final period = _value(['budget_period_type', 'report_type']);
     final month = _value(['fiscal_month', 'reporting_month']);
@@ -673,14 +704,14 @@ class _FinancialRecordDetailsPage extends StatelessWidget {
     final submittedAt = _value(['submitted_at', 'created_at']);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Financial Record')),
+      appBar: AppBar(title: const Text('Submitted Report')),
       backgroundColor: AppColors.lightGrayBg,
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
           AppSectionHeading(
             title: title.isEmpty ? 'Financial document' : title,
-            subtitle: 'Submitted financial record',
+            subtitle: 'Submitted document',
           ),
           const SizedBox(height: 16),
           AppSurface(
@@ -711,6 +742,7 @@ class _FinancialRecordDetailsPage extends StatelessWidget {
                 ),
                 _RecordDetail(label: 'File', value: fileName),
                 _RecordDetail(label: 'Remarks', value: _value(['remarks'])),
+                _RecordDetail(label: 'Review remarks', value: qualityRemarks),
                 _RecordDetail(
                   label: 'Record ID',
                   value: _value(['budget_report_id']),
@@ -723,7 +755,7 @@ class _FinancialRecordDetailsPage extends StatelessWidget {
             FilledButton.icon(
               onPressed: () => _openFile(context),
               icon: const Icon(Icons.picture_as_pdf_outlined),
-              label: const Text('Open financial document'),
+              label: const Text('Open submitted document'),
             ),
           ],
         ],

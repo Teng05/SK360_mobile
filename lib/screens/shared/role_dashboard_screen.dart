@@ -203,6 +203,7 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
                   onTabSelected: (index) =>
                       setState(() => _activeFeedTab = index),
                   onLike: _toggleWallLike,
+                  onRefresh: _refresh,
                 ),
               ],
             ),
@@ -737,12 +738,14 @@ class _FeedSection extends StatelessWidget {
   final ValueChanged<int> onTabSelected;
   final List<Map<String, dynamic>> posts;
   final Future<void> Function(Map<String, dynamic>) onLike;
+  final Future<void> Function() onRefresh;
 
   const _FeedSection({
     required this.activeTab,
     required this.onTabSelected,
     required this.posts,
     required this.onLike,
+    required this.onRefresh,
   });
 
   static const tabs = ['All', 'Announcements', 'Accomplishments', 'Events'];
@@ -780,6 +783,7 @@ class _FeedSection extends StatelessWidget {
               key: ValueKey(post['announcement_id']),
               post: post,
               onLike: () => onLike(post),
+              onCommentChanged: onRefresh,
             ),
           ),
       ],

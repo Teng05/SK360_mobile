@@ -160,7 +160,11 @@ class _RankingsScreenState extends State<RankingsScreen> {
     final period = _latestPeriod(rows);
     final filtered = period.isEmpty
         ? rows
-        : rows.where((row) => _text(row['reporting_period']) == period);
+        : rows.where((row) {
+            final rowPeriod = _text(row['reporting_period']);
+            // Keep barangays with no ranking yet so they remain searchable.
+            return rowPeriod.isEmpty || rowPeriod == period;
+          });
 
     final items = filtered.map((row) {
       final barangayId = _text(row['barangay_id']);

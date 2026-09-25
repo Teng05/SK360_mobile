@@ -240,6 +240,25 @@ class MobileApiService {
     return response;
   }
 
+  static Future<Map<String, dynamic>> wallPostComments(int announcementId) {
+    return _request('GET', '/wall/posts/$announcementId/comments');
+  }
+
+  static Future<Map<String, dynamic>> storeWallPostComment({
+    required int announcementId,
+    required String comment,
+  }) async {
+    final response = await _request(
+      'POST',
+      '/wall/posts/$announcementId/comments',
+      body: {'comment': comment},
+    );
+
+    await sync();
+
+    return response;
+  }
+
   static Future<Map<String, dynamic>> updateProfile({
     required String firstName,
     required String lastName,
@@ -563,6 +582,7 @@ class MobileApiService {
     required String lastName,
     required String email,
     String? phone,
+    String? term,
   }) async {
     final response = await _request(
       'POST',
@@ -571,6 +591,29 @@ class MobileApiService {
         'first_name': firstName.trim(),
         'last_name': lastName.trim(),
         'email': email.trim(),
+        if (phone != null && phone.trim().isNotEmpty) 'phone': phone.trim(),
+        if (term != null && term.trim().isNotEmpty) 'term': term.trim(),
+      },
+    );
+    await sync();
+    return response;
+  }
+
+  static Future<Map<String, dynamic>> createChairmanAccount({
+    required String firstName,
+    required String lastName,
+    required String email,
+    required int barangayId,
+    String? phone,
+  }) async {
+    final response = await _request(
+      'POST',
+      '/leadership/chairman',
+      body: {
+        'first_name': firstName.trim(),
+        'last_name': lastName.trim(),
+        'email': email.trim(),
+        'barangay_id': barangayId,
         if (phone != null && phone.trim().isNotEmpty) 'phone': phone.trim(),
       },
     );

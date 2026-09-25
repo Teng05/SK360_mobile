@@ -124,6 +124,7 @@ class _SyncedDataScreenState extends State<SyncedDataScreen> {
                             onLike: row['visibility'] == 'public'
                                 ? () => _likePost(row)
                                 : null,
+                            onCommentChanged: _refresh,
                             onEdit: _canManageAnnouncement(row)
                                 ? () => _editAnnouncement(row)
                                 : null,
