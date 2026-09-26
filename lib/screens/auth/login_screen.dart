@@ -53,7 +53,7 @@ class _LoginScreenState extends State<LoginScreen> {
             hintText: 'you@example.com',
             controller: _emailController,
             keyboardType: TextInputType.emailAddress,
-            autofillHints: const [AutofillHints.username],
+            autofillHints: const [AutofillHints.email, AutofillHints.username],
             textInputAction: TextInputAction.next,
             enabled: !_isLoading,
           ),

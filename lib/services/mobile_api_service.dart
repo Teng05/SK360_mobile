@@ -649,6 +649,7 @@ class MobileApiService {
     int? reportingYear,
     int? reportingMonth,
     String? reportingQuarter,
+    double? totalAmount,
     String? remarks,
   }) async {
     final response = await _multipartRequest(
@@ -660,6 +661,7 @@ class MobileApiService {
         'reporting_year': ?reportingYear,
         'reporting_month': ?reportingMonth,
         'reporting_quarter': ?reportingQuarter,
+        'total_amount': ?totalAmount,
         if (remarks != null && remarks.trim().isNotEmpty)
           'remarks': remarks.trim(),
       },

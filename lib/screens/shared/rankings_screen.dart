@@ -661,13 +661,16 @@ class _PointsSystemPanel extends StatelessWidget {
   const _PointsSystemPanel();
 
   static const rules = [
-    _PointRule('On-time Report Submission', '+50 points', true),
-    _PointRule('Meeting Attendance', '+30 points', true),
-    _PointRule('Community Engagement', '+25 points', true),
-    _PointRule('Quality Documentation', '+20 points', true),
-    _PointRule('Event Participation', '+15 points', true),
-    _PointRule('Late Submission', '-25 points', false),
-    _PointRule('Missed Meeting', '-30 points', false),
+    _PointRule('Annual COA Report', '+20 points', true),
+    _PointRule('KK Assembly', '+10 points', true),
+    _PointRule('Annual Budget', '+10 points', true),
+    _PointRule('Quarterly COA Report', '+10 points', true),
+    _PointRule('Semi-Annual COA Report', '+10 points', true),
+    _PointRule('Official Meeting Attendance', '+5 points', true),
+    _PointRule('Youth Development Program', '+5 points', true),
+    _PointRule('Monthly COA Report', '+5 points', true),
+    _PointRule('Late Required Submission', '-5 points', false),
+    _PointRule('Missed Official Meeting', '-5 points', false),
   ];
 
   @override

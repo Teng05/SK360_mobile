@@ -240,6 +240,7 @@ class _OfficialSubmissionScreenState extends State<OfficialSubmissionScreen>
         reportingQuarter: isBudget && draft.reportType == 'quarterly'
             ? draft.quarter
             : null,
+        totalAmount: isBudget ? draft.totalAmount : null,
         remarks: draft.remarks,
       );
       if (mounted) _showMessage('Submission synced.');
@@ -308,12 +309,14 @@ class _SubmissionDraft {
   final String reportType;
   final String quarter;
   final String remarks;
+  final double? totalAmount;
 
   const _SubmissionDraft({
     required this.file,
     required this.reportType,
     required this.quarter,
     required this.remarks,
+    required this.totalAmount,
   });
 }
 
@@ -338,6 +341,7 @@ class _SubmissionFormPageState extends State<_SubmissionFormPage> {
   final _remarksController = TextEditingController();
   late String _reportType;
   String _quarter = 'Q1';
+  final _amountController = TextEditingController();
   PdfUpload? _file;
   bool _isPickingFile = false;
 
@@ -354,6 +358,7 @@ class _SubmissionFormPageState extends State<_SubmissionFormPage> {
   @override
   void dispose() {
     _remarksController.dispose();
+    _amountController.dispose();
     super.dispose();
   }
 
@@ -394,6 +399,20 @@ class _SubmissionFormPageState extends State<_SubmissionFormPage> {
                       if (value != null) setState(() => _reportType = value);
                     },
             ),
+          if (widget.kind == SubmissionKind.budget) ...[
+            const SizedBox(height: 16),
+            TextField(
+              controller: _amountController,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: InputDecoration(
+                labelText: _reportType == 'annual'
+                    ? 'Annual budget / actual expenditure amount'
+                    : 'Report amount (optional)',
+                prefixText: '₱ ',
+                border: const OutlineInputBorder(),
+              ),
+            ),
+          ],
           if (widget.kind == SubmissionKind.budget &&
               _reportType == 'quarterly') ...[
             const SizedBox(height: 12),
@@ -470,6 +489,15 @@ class _SubmissionFormPageState extends State<_SubmissionFormPage> {
   void _submit() {
     final file = _file;
     if (file == null) return;
+    final amountText = _amountController.text.replaceAll(',', '').trim();
+    if (widget.kind == SubmissionKind.budget &&
+        _reportType == 'annual' &&
+        (double.tryParse(amountText) ?? 0) <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter the annual amount before submitting.')),
+      );
+      return;
+    }
     FocusScope.of(context).unfocus();
     Navigator.of(context).pop(
       _SubmissionDraft(
@@ -477,6 +505,7 @@ class _SubmissionFormPageState extends State<_SubmissionFormPage> {
         reportType: _reportType,
         quarter: _quarter,
         remarks: _remarksController.text,
+        totalAmount: double.tryParse(_amountController.text.replaceAll(',', '').trim()),
       ),
     );
   }

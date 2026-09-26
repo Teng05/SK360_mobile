@@ -334,7 +334,7 @@ class _CommentsSheetState extends State<_CommentsSheet> {
     final response = await MobileApiService.wallPostComments(
       widget.announcementId,
     );
-    final rows = response['feedbacks'] as List<dynamic>? ?? [];
+    final rows = (response['feedbacks'] ?? response['comments']) as List<dynamic>? ?? [];
     return rows.map((row) => Map<String, dynamic>.from(row as Map)).toList();
   }
 
