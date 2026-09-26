@@ -751,6 +751,21 @@ class MobileApiService {
     return _request('PATCH', '/submission-slots/$slotId/toggle');
   }
 
+  static Future<Map<String, dynamic>> updateSubmissionSlot({
+    required int slotId,
+    required String title,
+    required String description,
+    required DateTime startDate,
+    required DateTime endDate,
+    required String status,
+  }) => _request('PATCH', '/submission-slots/$slotId', body: {
+    'title': title,
+    'description': description,
+    'start_date': startDate.toIso8601String().substring(0, 10),
+    'end_date': endDate.toIso8601String().substring(0, 10),
+    'status': status,
+  });
+
   static Future<Map<String, dynamic>> submissionSlotSubmissions(int slotId) {
     return _request('GET', '/submission-slots/$slotId/submissions');
   }

@@ -191,6 +191,7 @@ class _ModuleManagementScreenState extends State<ModuleManagementScreen> {
                     child: _SlotCard(
                       slot: slot,
                       onDelete: () => _deleteSlot(slot),
+                      onEdit: () => _editSlot(slot),
                       onToggle: () => _toggleSlot(slot),
                       onView: () => _viewSubmissions(slot),
                     ),
@@ -522,6 +523,31 @@ class _ModuleManagementScreenState extends State<ModuleManagementScreen> {
     }
   }
 
+  Future<void> _editSlot(Map<String, dynamic> slot) async {
+    final id = int.tryParse('${slot['slot_id']}');
+    if (id == null) return;
+    final title = TextEditingController(text: '${slot['title'] ?? ''}');
+    final description = TextEditingController(text: '${slot['description'] ?? ''}');
+    DateTime start = DateTime.tryParse('${slot['start_date']}') ?? DateTime.now();
+    DateTime end = DateTime.tryParse('${slot['end_date']}') ?? start.add(const Duration(days: 7));
+    var status = _isOpen(slot) ? 'open' : 'closed';
+    await showDialog<void>(context: context, builder: (dialogContext) => StatefulBuilder(
+      builder: (_, setDialog) => AlertDialog(
+        title: const Text('Edit Submission Slot'),
+        content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
+          TextField(controller: title, decoration: const InputDecoration(labelText: 'Title')),
+          TextField(controller: description, maxLines: 2, decoration: const InputDecoration(labelText: 'Description')),
+          const SizedBox(height: 12),
+          _DatePickerField(label: 'Start date', date: start, onTap: () async { final d = await _pickDate(initialDate: start); if (d != null) setDialog(() => start = d); }),
+          _DatePickerField(label: 'End date', date: end, onTap: () async { final d = await _pickDate(initialDate: end, firstDate: start); if (d != null) setDialog(() => end = d); }),
+          DropdownButtonFormField<String>(initialValue: status, items: const [DropdownMenuItem(value: 'open', child: Text('Open')), DropdownMenuItem(value: 'closed', child: Text('Closed'))], onChanged: (v) => setDialog(() => status = v ?? status), decoration: const InputDecoration(labelText: 'Slot status')),
+        ])),
+        actions: [TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')), FilledButton(onPressed: () async { await MobileApiService.updateSubmissionSlot(slotId: id, title: title.text.trim(), description: description.text.trim(), startDate: start, endDate: end, status: status); if (dialogContext.mounted) Navigator.pop(dialogContext); await _loadSlots(); }, child: const Text('Save'))],
+      ),
+    ));
+    title.dispose(); description.dispose();
+  }
+
   Future<void> _viewSubmissions(Map<String, dynamic> slot) async {
     final slotId = int.tryParse('${slot['slot_id']}');
     if (slotId == null) return;
@@ -845,19 +871,21 @@ class _SubmissionMessage extends StatelessWidget {
   }
 }
 
-enum _SlotAction { view, toggle, delete }
+enum _SlotAction { view, edit, toggle, delete }
 
 class _SlotCard extends StatelessWidget {
   final Map<String, dynamic> slot;
   final VoidCallback onDelete;
   final VoidCallback onToggle;
   final VoidCallback onView;
+  final VoidCallback onEdit;
 
   const _SlotCard({
     required this.slot,
     required this.onDelete,
     required this.onToggle,
     required this.onView,
+    required this.onEdit,
   });
 
   @override
@@ -909,10 +937,12 @@ class _SlotCard extends StatelessWidget {
                 ),
                 onSelected: (action) => switch (action) {
                   _SlotAction.view => onView(),
+                  _SlotAction.edit => onEdit(),
                   _SlotAction.toggle => onToggle(),
                   _SlotAction.delete => onDelete(),
                 },
                 itemBuilder: (_) => [
+                  const PopupMenuItem(value: _SlotAction.edit, child: _MenuRow(icon: Icons.edit_outlined, label: 'Edit slot')),
                   const PopupMenuItem(
                     value: _SlotAction.view,
                     child: _MenuRow(
