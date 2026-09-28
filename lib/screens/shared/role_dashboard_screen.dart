@@ -248,8 +248,10 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
       'event',
     ][_activeFeedTab - 1];
     return posts.where((post) {
-      final title = post['title']?.toString().toLowerCase() ?? '';
-      return title.contains(needle);
+      final category = (post['post_category'] ?? post['category'] ?? '')
+          .toString()
+          .toLowerCase();
+      return category == needle;
     }).toList();
   }
 

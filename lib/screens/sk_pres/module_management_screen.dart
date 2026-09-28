@@ -192,7 +192,6 @@ class _ModuleManagementScreenState extends State<ModuleManagementScreen> {
                       slot: slot,
                       onDelete: () => _deleteSlot(slot),
                       onEdit: () => _editSlot(slot),
-                      onToggle: () => _toggleSlot(slot),
                       onView: () => _viewSubmissions(slot),
                     ),
                   ),
@@ -507,22 +506,6 @@ class _ModuleManagementScreenState extends State<ModuleManagementScreen> {
     }
   }
 
-  Future<void> _toggleSlot(Map<String, dynamic> slot) async {
-    final slotId = int.tryParse('${slot['slot_id']}');
-    if (slotId == null) return;
-
-    setState(() => _isLoading = true);
-    try {
-      await MobileApiService.toggleSubmissionSlot(slotId);
-      await _loadSlots();
-      if (mounted) _showMessage('Submission slot status updated.');
-    } on MobileApiException catch (exception) {
-      if (mounted) _showMessage(exception.message);
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
   Future<void> _editSlot(Map<String, dynamic> slot) async {
     final id = int.tryParse('${slot['slot_id']}');
     if (id == null) return;
@@ -531,18 +514,45 @@ class _ModuleManagementScreenState extends State<ModuleManagementScreen> {
     DateTime start = DateTime.tryParse('${slot['start_date']}') ?? DateTime.now();
     DateTime end = DateTime.tryParse('${slot['end_date']}') ?? start.add(const Duration(days: 7));
     var status = _isOpen(slot) ? 'open' : 'closed';
+    var role = ['SK Chairman', 'SK Secretary', 'Both'].contains(slot['role']) ? '${slot['role']}' : 'Both';
+    final originalTitle = title.text.trim();
+    final originalDescription = description.text.trim();
+    final originalStart = start;
+    final originalEnd = end;
+    final originalStatus = status;
+    final originalRole = role;
     await showDialog<void>(context: context, builder: (dialogContext) => StatefulBuilder(
       builder: (_, setDialog) => AlertDialog(
         title: const Text('Edit Submission Slot'),
-        content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
-          TextField(controller: title, decoration: const InputDecoration(labelText: 'Title')),
-          TextField(controller: description, maxLines: 2, decoration: const InputDecoration(labelText: 'Description')),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 24),
+      content: SizedBox(width: 520, child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
+          TextField(controller: title, onChanged: (_) => setDialog(() {}), decoration: const InputDecoration(labelText: 'Title')),
+          TextField(controller: description, onChanged: (_) => setDialog(() {}), maxLines: 2, decoration: const InputDecoration(labelText: 'Description')),
           const SizedBox(height: 12),
           _DatePickerField(label: 'Start date', date: start, onTap: () async { final d = await _pickDate(initialDate: start); if (d != null) setDialog(() => start = d); }),
           _DatePickerField(label: 'End date', date: end, onTap: () async { final d = await _pickDate(initialDate: end, firstDate: start); if (d != null) setDialog(() => end = d); }),
           DropdownButtonFormField<String>(initialValue: status, items: const [DropdownMenuItem(value: 'open', child: Text('Open')), DropdownMenuItem(value: 'closed', child: Text('Closed'))], onChanged: (v) => setDialog(() => status = v ?? status), decoration: const InputDecoration(labelText: 'Slot status')),
-        ])),
-        actions: [TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')), FilledButton(onPressed: () async { await MobileApiService.updateSubmissionSlot(slotId: id, title: title.text.trim(), description: description.text.trim(), startDate: start, endDate: end, status: status); if (dialogContext.mounted) Navigator.pop(dialogContext); await _loadSlots(); }, child: const Text('Save'))],
+          DropdownButtonFormField<String>(initialValue: role, items: const [DropdownMenuItem(value: 'SK Chairman', child: Text('SK Chairman')), DropdownMenuItem(value: 'SK Secretary', child: Text('SK Secretary')), DropdownMenuItem(value: 'Both', child: Text('Both'))], onChanged: (v) => setDialog(() => role = v ?? role), decoration: const InputDecoration(labelText: 'Target role')),
+        ]))),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
+          FilledButton(onPressed: title.text.trim() == originalTitle && description.text.trim() == originalDescription && start == originalStart && end == originalEnd && status == originalStatus && role == originalRole ? null : () async {
+            if (title.text.trim().isEmpty || end.isBefore(start)) {
+              _showMessage('Enter a title and valid dates.');
+              return;
+            }
+            try {
+              await MobileApiService.updateSubmissionSlot(slotId: id, title: title.text.trim(), description: description.text.trim(), startDate: start, endDate: end, status: status, role: role);
+              if (dialogContext.mounted) Navigator.pop(dialogContext);
+              await _loadSlots();
+              if (mounted) _showMessage('Submission slot updated.');
+            } on MobileApiException catch (e) {
+              if (mounted) _showMessage(e.message);
+            } catch (e) {
+              if (mounted) _showMessage('Unable to save slot changes.');
+            }
+          }, child: const Text('Save')),
+        ],
       ),
     ));
     title.dispose(); description.dispose();
@@ -871,19 +881,17 @@ class _SubmissionMessage extends StatelessWidget {
   }
 }
 
-enum _SlotAction { view, edit, toggle, delete }
+enum _SlotAction { view, edit, delete }
 
 class _SlotCard extends StatelessWidget {
   final Map<String, dynamic> slot;
   final VoidCallback onDelete;
-  final VoidCallback onToggle;
   final VoidCallback onView;
   final VoidCallback onEdit;
 
   const _SlotCard({
     required this.slot,
     required this.onDelete,
-    required this.onToggle,
     required this.onView,
     required this.onEdit,
   });
@@ -938,7 +946,6 @@ class _SlotCard extends StatelessWidget {
                 onSelected: (action) => switch (action) {
                   _SlotAction.view => onView(),
                   _SlotAction.edit => onEdit(),
-                  _SlotAction.toggle => onToggle(),
                   _SlotAction.delete => onDelete(),
                 },
                 itemBuilder: (_) => [
@@ -948,15 +955,6 @@ class _SlotCard extends StatelessWidget {
                     child: _MenuRow(
                       icon: Icons.visibility_outlined,
                       label: 'View submissions',
-                    ),
-                  ),
-                  PopupMenuItem(
-                    value: _SlotAction.toggle,
-                    child: _MenuRow(
-                      icon: isOpen
-                          ? Icons.lock_outline_rounded
-                          : Icons.lock_open_rounded,
-                      label: isOpen ? 'Close slot' : 'Reopen slot',
                     ),
                   ),
                   const PopupMenuItem(

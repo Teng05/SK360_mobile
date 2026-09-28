@@ -42,7 +42,10 @@ class _RankingsScreenState extends State<RankingsScreen> {
         : historyPeriods.isNotEmpty
         ? historyPeriods.first
         : period;
-    final topThree = _historyRankings(history, selectedPeriod).take(3).toList();
+    final selectedHistoryCount = _historyRankings(history, selectedPeriod).length;
+    // The podium must use the same current-period rows as the Live Leaderboard.
+    // Historical rankings are only used by the history selector below.
+    final topThree = rankings.take(3).toList();
 
     return Scaffold(
       key: _scaffoldKey,
@@ -100,6 +103,7 @@ class _RankingsScreenState extends State<RankingsScreen> {
                   child: _RankingHistoryDropdown(
                     history: history,
                     selectedPeriod: selectedPeriod,
+                    selectedCount: selectedHistoryCount,
                     onChanged: (value) {
                       setState(() => _selectedHistoryPeriod = value);
                     },
@@ -157,10 +161,19 @@ class _RankingsScreenState extends State<RankingsScreen> {
       barangayNames[id] = _text(barangay['barangay_name']);
     }
 
-    final period = _latestPeriod(rows);
+    final eligibleRows = rows.where((row) => !_isFuturePeriod(_text(row['reporting_period']))).toList();
+    final currentRows = eligibleRows.where((row) => _isCurrentPeriod(_text(row['reporting_period']))).toList();
+    // Start each month from zero when the server has not produced a current-month ranking yet.
+    if (currentRows.isEmpty && barangayNames.isNotEmpty) {
+      return [
+        for (var index = 0; index < barangayNames.length; index++)
+          _RankingItem(name: barangayNames.values.elementAt(index), points: 0, onTime: 0, completion: 0, engagement: 0, rank: index + 1),
+      ];
+    }
+    final period = currentRows.isNotEmpty ? _text(currentRows.first['reporting_period']) : _latestPeriod(eligibleRows);
     final filtered = period.isEmpty
-        ? rows
-        : rows.where((row) {
+        ? eligibleRows
+        : eligibleRows.where((row) {
             final rowPeriod = _text(row['reporting_period']);
             // Keep barangays with no ranking yet so they remain searchable.
             return rowPeriod.isEmpty || rowPeriod == period;
@@ -206,6 +219,31 @@ class _RankingsScreenState extends State<RankingsScreen> {
     });
 
     return _text(withPeriod.first['reporting_period']);
+  }
+
+  bool _isFuturePeriod(String value) {
+    final text = value.trim();
+    final match = RegExp(r'^(\d{4})[-/](\d{1,2})').firstMatch(text);
+    var year = match == null ? 0 : int.parse(match.group(1)!);
+    var month = match == null ? 0 : int.parse(match.group(2)!);
+    if (match == null) {
+      final named = RegExp(r'^([A-Za-z]+)\s+(\d{4})').firstMatch(text);
+      if (named == null) return false;
+      const names = <String>['january','february','march','april','may','june','july','august','september','october','november','december'];
+      month = names.indexOf(named.group(1)!.toLowerCase()) + 1;
+      year = int.parse(named.group(2)!);
+      if (month == 0) return false;
+    }
+    final now = DateTime.now();
+    return year > now.year || (year == now.year && month > now.month);
+  }
+
+  bool _isCurrentPeriod(String value) {
+    final text = value.toLowerCase();
+    final now = DateTime.now();
+    final year = '${now.year}';
+    const names = <String>['january','february','march','april','may','june','july','august','september','october','november','december'];
+    return text.contains(year) && (text.contains('-${now.month.toString().padLeft(2, '0')}') || text.contains('/${now.month}') || text.contains(names[now.month - 1]));
   }
 
   List<Map<String, dynamic>> _history() {
@@ -679,7 +717,7 @@ class _PointsSystemPanel extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const AppSectionHeading(
+          AppSectionHeading(
             icon: Icons.stars_outlined,
             title: 'Points System',
             subtitle: 'How points are earned and deducted',
@@ -944,11 +982,13 @@ class _RankingHistoryDropdown extends StatelessWidget {
   final List<Map<String, dynamic>> history;
   final String selectedPeriod;
   final ValueChanged<String?> onChanged;
+  final int selectedCount;
 
   const _RankingHistoryDropdown({
     required this.history,
     required this.selectedPeriod,
     required this.onChanged,
+    required this.selectedCount,
   });
 
   @override
@@ -963,10 +1003,12 @@ class _RankingHistoryDropdown extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const AppSectionHeading(
+          AppSectionHeading(
             icon: Icons.history_rounded,
             title: 'Ranking History',
-            subtitle: 'Select a month to view its top barangays.',
+            subtitle: selectedCount == 0
+                ? 'Select a month to view its top barangays.'
+                : '$selectedCount barangays recorded for this month.',
           ),
           const SizedBox(height: 14),
           if (periods.isEmpty)

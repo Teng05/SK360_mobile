@@ -183,6 +183,10 @@ class _SyncedDataScreenState extends State<SyncedDataScreen> {
     }
 
     if (widget.dataKey == 'wall_posts' || widget.dataKey == 'announcements') {
+      if (widget.dataKey == 'announcements') {
+        rows.removeWhere((row) =>
+            '${row['post_category'] ?? ''}'.toLowerCase() != 'announcement');
+      }
       rows.sort((a, b) {
         final bDate = DateTime.tryParse(b['created_at']?.toString() ?? '');
         final aDate = DateTime.tryParse(a['created_at']?.toString() ?? '');
@@ -232,7 +236,7 @@ class _SyncedDataScreenState extends State<SyncedDataScreen> {
   }
 
   bool _canManageAnnouncement(Map<String, dynamic> row) {
-    if (widget.dataKey != 'wall_posts' || !_canCreatePost) return false;
+    if (!{'wall_posts', 'announcements'}.contains(widget.dataKey) || !_canCreatePost) return false;
     final title = row['title']?.toString().trim().toLowerCase() ?? '';
     return !{
       'community update',

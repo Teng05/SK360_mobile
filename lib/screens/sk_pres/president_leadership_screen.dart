@@ -511,6 +511,10 @@ class _PresidentLeadershipScreenState extends State<PresidentLeadershipScreen> {
     var email = leader.email;
     var phone = leader.phone;
     var term = leader.term;
+    final originalName = name;
+    final originalEmail = email;
+    final originalPhone = phone;
+    final originalTerm = term;
     var isSaving = false;
     File? profilePicture;
 
@@ -564,27 +568,27 @@ class _PresidentLeadershipScreenState extends State<PresidentLeadershipScreen> {
                   TextFormField(
                     initialValue: name,
                     decoration: _decoration('Full name'),
-                    onChanged: (value) => name = value,
+                    onChanged: (value) => setDialogState(() => name = value),
                   ),
                   const SizedBox(height: 10),
                   TextFormField(
                     initialValue: email,
                     decoration: _decoration('Email'),
                     keyboardType: TextInputType.emailAddress,
-                    onChanged: (value) => email = value,
+                    onChanged: (value) => setDialogState(() => email = value),
                   ),
                   const SizedBox(height: 10),
                   TextFormField(
                     initialValue: phone,
                     decoration: _decoration('Phone'),
                     keyboardType: TextInputType.phone,
-                    onChanged: (value) => phone = value,
+                    onChanged: (value) => setDialogState(() => phone = value),
                   ),
                   const SizedBox(height: 10),
                   TextFormField(
                     initialValue: term,
                     decoration: _decoration('Term'),
-                    onChanged: (value) => term = value,
+                    onChanged: (value) => setDialogState(() => term = value),
                   ),
                 ],
               ),
@@ -595,7 +599,14 @@ class _PresidentLeadershipScreenState extends State<PresidentLeadershipScreen> {
                 child: const Text('Cancel'),
               ),
               FilledButton(
-                onPressed: isSaving ? null : submit,
+                onPressed: isSaving ||
+                        (name.trim() == originalName.trim() &&
+                            email.trim() == originalEmail.trim() &&
+                            phone.trim() == originalPhone.trim() &&
+                            term.trim() == originalTerm.trim() &&
+                            profilePicture == null)
+                    ? null
+                    : submit,
                 child: Text(isSaving ? 'Saving...' : 'Save'),
               ),
             ],

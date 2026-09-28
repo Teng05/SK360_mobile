@@ -758,13 +758,19 @@ class MobileApiService {
     required DateTime startDate,
     required DateTime endDate,
     required String status,
-  }) => _request('PATCH', '/submission-slots/$slotId', body: {
-    'title': title,
-    'description': description,
-    'start_date': startDate.toIso8601String().substring(0, 10),
-    'end_date': endDate.toIso8601String().substring(0, 10),
-    'status': status,
-  });
+    required String role,
+  }) => _request(
+    'PATCH',
+    '/submission-slots/$slotId',
+    body: {
+      'title': title,
+      'description': description,
+      'start_date': startDate.toIso8601String().substring(0, 10),
+      'end_date': endDate.toIso8601String().substring(0, 10),
+      'status': status,
+      'role': role,
+    },
+  );
 
   static Future<Map<String, dynamic>> submissionSlotSubmissions(int slotId) {
     return _request('GET', '/submission-slots/$slotId/submissions');
@@ -827,6 +833,28 @@ class MobileApiService {
 
     return _request('GET', '/consolidation$suffix');
   }
+
+  static Future<Map<String, dynamic>> submitQualityReview({
+    required String sourceType,
+    required int sourceId,
+    required String status,
+    required bool completeContents,
+    required bool correctDocument,
+    required bool correctPeriod,
+    String? remarks,
+  }) => _request(
+    'POST',
+    '/consolidation/quality-review',
+    body: {
+      'source_type': sourceType,
+      'source_id': sourceId,
+      'status': status,
+      'complete_contents': completeContents,
+      'correct_document': correctDocument,
+      'correct_period': correctPeriod,
+      'remarks': remarks,
+    },
+  );
 
   static Future<Map<String, dynamic>> sync({DateTime? since}) async {
     final query = since == null

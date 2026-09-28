@@ -92,9 +92,6 @@ class AppNotification {
   /// The backend supplies section links, not mobile detail identifiers. Only
   /// navigate to registered sections that the current role already uses.
   String? destination(String role) {
-    if (!{'sk_president', 'sk_chairman', 'sk_secretary'}.contains(role)) {
-      return null;
-    }
     final president = role == 'sk_president';
     return switch (kind) {
       NotificationKind.announcement => AppRoutes.announcements,
@@ -102,7 +99,9 @@ class AppNotification {
       NotificationKind.meeting => AppRoutes.videoMeetings,
       NotificationKind.message => AppRoutes.presidentMessages,
       NotificationKind.submission =>
-        president && _type.endsWith('_slot')
+        president && (_type.endsWith('_submission') || _type.endsWith('_resubmission'))
+            ? AppRoutes.consolidation
+            : president && _type.endsWith('_slot')
             ? AppRoutes.moduleManagement
             : !president && (_type.startsWith('budget') || _section == 'budget')
             ? AppRoutes.budget

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../services/mobile_api_service.dart';
 import '../../ui/app_ui.dart';
 import '../../widgets/president_components.dart';
+import '../shared/meeting_webview_screen.dart';
 
 class ConsolidationScreen extends StatefulWidget {
   const ConsolidationScreen({super.key});
@@ -15,6 +16,7 @@ class _ConsolidationScreenState extends State<ConsolidationScreen> {
   static const int _pageSize = 10;
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   final TextEditingController _searchController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
   bool _isLoading = false;
   String? _loadError;
   int _year = DateTime.now().year;
@@ -26,6 +28,27 @@ class _ConsolidationScreenState extends State<ConsolidationScreen> {
   List<int> _years = [DateTime.now().year];
   String _searchQuery = '';
   int _currentPage = 1;
+  String _reviewQuery = '';
+  String _reviewFilter = 'all';
+  int _reviewPage = 1;
+
+  List<Map<String, dynamic>> get _reviewRows {
+    final q = _reviewQuery.toLowerCase().trim();
+    return _submissions.where((row) {
+      final qualityStatus = '${row['quality_status'] ?? 'pending'}'
+          .toLowerCase();
+      final pendingReview =
+          qualityStatus.isEmpty ||
+          qualityStatus == 'pending' ||
+          qualityStatus == 'pending_review' ||
+          qualityStatus == 'for_review';
+      return row['status'] == 'submitted' &&
+          pendingReview &&
+          (_reviewFilter == 'all' ||
+              '${row['source_type'] ?? ''}'.contains(_reviewFilter)) &&
+          (q.isEmpty || '${row['barangay'] ?? ''}'.toLowerCase().contains(q));
+    }).toList();
+  }
 
   List<Map<String, dynamic>> get _filteredSubmissions {
     final query = _searchQuery.trim().toLowerCase();
@@ -55,6 +78,7 @@ class _ConsolidationScreenState extends State<ConsolidationScreen> {
   @override
   void dispose() {
     _searchController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -72,6 +96,7 @@ class _ConsolidationScreenState extends State<ConsolidationScreen> {
         child: RefreshIndicator(
           onRefresh: _loadConsolidation,
           child: ListView(
+            controller: _scrollController,
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.only(bottom: 24),
             children: [
@@ -93,8 +118,7 @@ class _ConsolidationScreenState extends State<ConsolidationScreen> {
                 eyebrow: 'Federation overview',
                 title: 'Consolidation',
                 subtitle:
-                    'Track which barangays have submitted for each reporting '
-                    'period.',
+                    'Track which barangays have submitted for each reporting period.',
               ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
@@ -205,9 +229,79 @@ class _ConsolidationScreenState extends State<ConsolidationScreen> {
                     currentPage: _currentPage,
                     pageCount: _pageCount,
                     totalItems: _filteredSubmissions.length,
-                    onPageChanged: (page) =>
-                        setState(() => _currentPage = page),
+                    onPageChanged: (page) {
+                      setState(() => _currentPage = page);
+                      _scrollController.animateTo(
+                        0,
+                        duration: const Duration(milliseconds: 250),
+                        curve: Curves.easeOut,
+                      );
+                    },
                   ),
+                ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 24, 16, 8),
+                child: AppSectionHeading(
+                  icon: Icons.verified_outlined,
+                  title: 'Quality Documentation Review',
+                  action: AppStatusBadge(
+                    label:
+                        '${_filteredSubmissions.where((r) => r['status'] == 'submitted').length}',
+                    color: AppColors.warning,
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+                child: TextField(
+                  decoration: const InputDecoration(
+                    hintText: 'Search barangay...',
+                    prefixIcon: Icon(Icons.search),
+                  ),
+                  onChanged: (v) => setState(() {
+                    _reviewQuery = v;
+                    _reviewPage = 1;
+                  }),
+                ),
+              ),
+              AppFilterPills(
+                labels: const [
+                  'All',
+                  'Report submissions',
+                  'Budget submissions',
+                ],
+                selectedIndex: [
+                  'all',
+                  'accomplishment_report',
+                  'budget_report',
+                ].indexOf(_reviewFilter),
+                onSelected: (i) => setState(() {
+                  _reviewFilter = [
+                    'all',
+                    'accomplishment_report',
+                    'budget_report',
+                  ][i];
+                  _reviewPage = 1;
+                }),
+              ),
+              ..._reviewRows
+                  .skip((_reviewPage - 1) * 5)
+                  .take(5)
+                  .map(
+                    (row) => Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                      child: _QualityReviewCard(
+                        row: row,
+                        onSaved: _loadConsolidation,
+                      ),
+                    ),
+                  ),
+              if ((_reviewRows.length / 5).ceil() > 1)
+                _PaginationControls(
+                  currentPage: _reviewPage,
+                  pageCount: (_reviewRows.length / 5).ceil(),
+                  totalItems: _reviewRows.length,
+                  onPageChanged: (p) => setState(() => _reviewPage = p),
                 ),
             ],
           ),
@@ -440,6 +534,14 @@ class _BarangaySubmissionCard extends StatelessWidget {
             color: color,
             dot: true,
           ),
+          if (submitted) ...[
+            const SizedBox(height: 8),
+            AppStatusBadge(
+              label: _qualityLabel(row),
+              color: _qualityColor(row),
+              dot: true,
+            ),
+          ],
           const SizedBox(height: 12),
           _Line(
             label: 'Monthly',
@@ -454,6 +556,231 @@ class _BarangaySubmissionCard extends StatelessWidget {
           AppMeta(
             icon: Icons.schedule_rounded,
             label: 'Last: ${row['last_submission']}',
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _qualityLabel(Map<String, dynamic> row) {
+    switch ('${row['quality_status'] ?? 'pending'}'.toLowerCase()) {
+      case 'approved':
+        return 'Quality Approved';
+      case 'needs_revision':
+        return 'Needs Revision';
+      default:
+        return 'For Quality Review';
+    }
+  }
+
+  Color _qualityColor(Map<String, dynamic> row) {
+    switch ('${row['quality_status'] ?? 'pending'}'.toLowerCase()) {
+      case 'approved':
+        return AppColors.success;
+      case 'needs_revision':
+        return AppColors.primaryRed;
+      default:
+        return AppColors.warning;
+    }
+  }
+}
+
+class _QualityReviewCard extends StatefulWidget {
+  final Map<String, dynamic> row;
+  final Future<void> Function() onSaved;
+
+  const _QualityReviewCard({required this.row, required this.onSaved});
+
+  @override
+  State<_QualityReviewCard> createState() => _QualityReviewCardState();
+}
+
+class _QualityReviewCardState extends State<_QualityReviewCard> {
+  bool complete = false, document = false, period = false, saving = false;
+  final remarks = TextEditingController();
+
+  @override
+  void dispose() {
+    remarks.dispose();
+    super.dispose();
+  }
+
+  void _message(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _save(String status) async {
+    final id = int.tryParse(
+      '${widget.row['source_id'] ?? widget.row['report_id'] ?? widget.row['budget_report_id'] ?? ''}',
+    );
+    if (id == null) {
+      _message('Unable to identify this submission.');
+      return;
+    }
+    if (status == 'approved' && (!complete || !document || !period)) {
+      _message(
+        'Check Complete Contents, Correct Document, and Correct Period first.',
+      );
+      return;
+    }
+    if (status == 'needs_revision' && remarks.text.trim().isEmpty) {
+      _message('Add review remarks before requesting a revision.');
+      return;
+    }
+    setState(() => saving = true);
+    try {
+      await MobileApiService.submitQualityReview(
+        sourceType: '${widget.row['source_type'] ?? 'accomplishment_report'}',
+        sourceId: id,
+        status: status,
+        completeContents: complete,
+        correctDocument: document,
+        correctPeriod: period,
+        remarks: remarks.text.trim(),
+      );
+      _message(
+        status == 'approved'
+            ? 'Quality review approved.'
+            : 'Submission returned for revision.',
+      );
+      await widget.onSaved();
+    } on MobileApiException catch (exception) {
+      _message(exception.message);
+    } catch (_) {
+      _message('Unable to save the quality review. Please try again.');
+    } finally {
+      if (mounted) setState(() => saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final row = widget.row;
+    final url = [row['document_url'], row['uploaded_file_url'], row['mobile_view_url']]
+        .map((value) => value?.toString().trim() ?? '')
+        .firstWhere((value) => value.isNotEmpty, orElse: () => '');
+
+    return AppSurface(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const AppIconTile(
+                icon: Icons.description_outlined,
+                color: AppColors.primaryRed,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    Text(
+                      '${row['barangay'] ?? 'Barangay'}',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const AppStatusBadge(
+                      label: 'Pending Review',
+                      color: AppColors.warning,
+                      dot: true,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '${row['source_title'] ?? row['source_label'] ?? 'Submission'}',
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 12,
+            runSpacing: 4,
+            children: [
+              Text(
+                '${row['source_label'] ?? 'Submission'}',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              Text(
+                '${row['reporting_period'] ?? row['period'] ?? 'Annual'}',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              Text(
+                'Submitted: ${row['last_submission'] ?? '—'}',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          OutlinedButton.icon(
+            onPressed: url.isEmpty
+                ? null
+                : () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => MeetingWebViewScreen(
+                        url: url,
+                        title: 'Submitted Document',
+                      ),
+                    ),
+                  ),
+            icon: const Icon(Icons.visibility_outlined),
+            label: const Text('View Document'),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              FilterChip(
+                label: const Text('Complete Contents'),
+                selected: complete,
+                onSelected: (value) => setState(() => complete = value),
+              ),
+              FilterChip(
+                label: const Text('Correct Document'),
+                selected: document,
+                onSelected: (value) => setState(() => document = value),
+              ),
+              FilterChip(
+                label: const Text('Correct Period'),
+                selected: period,
+                onSelected: (value) => setState(() => period = value),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: remarks,
+            maxLines: 3,
+            decoration: const InputDecoration(
+              labelText: 'Review Remarks',
+              hintText: 'Add remarks, especially when revision is needed...',
+            ),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            alignment: WrapAlignment.end,
+            children: [
+              TextButton(
+                onPressed: saving ? null : () => _save('needs_revision'),
+                child: const Text('Needs Revision'),
+              ),
+              FilledButton(
+                onPressed: saving ? null : () => _save('approved'),
+                child: const Text('Approve Quality'),
+              ),
+            ],
           ),
         ],
       ),
@@ -478,6 +805,7 @@ class _PaginationControls extends StatelessWidget {
   Widget build(BuildContext context) {
     final firstItem = ((currentPage - 1) * 10) + 1;
     final lastItem = (currentPage * 10).clamp(0, totalItems);
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: AppDecorations.surface(),
@@ -526,6 +854,7 @@ class _Line extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final done = value.toLowerCase().contains('submitted');
+
     return Container(
       margin: const EdgeInsets.only(bottom: 6),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),

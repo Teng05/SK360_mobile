@@ -134,7 +134,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         .where((item) => !item.isRead && item.id != null)
         .length;
     final busy = _markingAll || _opening || _refreshing;
-    final role = '${MobileApiService.currentUser?['role'] ?? ''}';
     return Scaffold(
       backgroundColor: AppColors.white,
       body: SafeArea(
@@ -214,10 +213,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                             return _NotificationCard(
                               item: item,
                               opening: _opening && _openingId == item.id,
-                              onTap:
-                                  busy ||
-                                      (item.destination(role) == null &&
-                                          (item.isRead || item.id == null))
+                              onTap: busy || item.id == null
                                   ? null
                                   : () => _openNotification(item),
                             );

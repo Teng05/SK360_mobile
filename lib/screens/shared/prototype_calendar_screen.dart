@@ -185,8 +185,12 @@ class _PrototypeCalendarScreenState extends State<PrototypeCalendarScreen> {
     final existingEnd = DateTime.tryParse(
       event?['end_datetime']?.toString() ?? '',
     );
-    DateTime startDate = existingStart ?? _selectedDate;
-    DateTime endDate = existingEnd ?? startDate;
+    DateTime startDate = existingStart == null
+        ? _selectedDate
+        : DateTime(existingStart.year, existingStart.month, existingStart.day);
+    DateTime endDate = existingEnd == null
+        ? startDate
+        : DateTime(existingEnd.year, existingEnd.month, existingEnd.day);
     String eventType = event?['event_type']?.toString() ?? 'program';
     String visibility = event?['visibility']?.toString() ?? 'public';
     bool isSubmitting = false;
@@ -217,11 +221,13 @@ class _PrototypeCalendarScreenState extends State<PrototypeCalendarScreen> {
                       _DialogField(
                         controller: titleController,
                         hint: 'Event Title',
+                        onChanged: (_) => setDialogState(() {}),
                       ),
                       const SizedBox(height: 10),
                       _DialogField(
                         controller: descriptionController,
                         hint: 'Description',
+                        onChanged: (_) => setDialogState(() {}),
                         maxLines: 2,
                       ),
                       const SizedBox(height: 10),
@@ -358,7 +364,13 @@ class _PrototypeCalendarScreenState extends State<PrototypeCalendarScreen> {
                   child: const Text('Cancel'),
                 ),
                 FilledButton(
-                  onPressed: isSubmitting
+                  onPressed: isSubmitting || (event != null &&
+                      titleController.text.trim() == (event['title']?.toString() ?? '') &&
+                      descriptionController.text.trim() == (event['description']?.toString() ?? '') &&
+                      startDate == (existingStart == null ? startDate : DateTime(existingStart.year, existingStart.month, existingStart.day)) &&
+                      endDate == (existingEnd == null ? endDate : DateTime(existingEnd.year, existingEnd.month, existingEnd.day)) &&
+                      eventType == (event['event_type']?.toString() ?? 'program') &&
+                      visibility == (event['visibility']?.toString() ?? 'public'))
                       ? null
                       : () async {
                           if (titleController.text.trim().isEmpty) {
@@ -911,11 +923,13 @@ class _DialogField extends StatelessWidget {
   final TextEditingController controller;
   final String hint;
   final int maxLines;
+  final ValueChanged<String>? onChanged;
 
   const _DialogField({
     required this.controller,
     required this.hint,
     this.maxLines = 1,
+    this.onChanged,
   });
 
   @override
@@ -923,6 +937,7 @@ class _DialogField extends StatelessWidget {
     return TextField(
       controller: controller,
       maxLines: maxLines,
+      onChanged: onChanged,
       decoration: _inputDecoration(hint),
     );
   }

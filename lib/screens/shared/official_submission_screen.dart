@@ -525,6 +525,10 @@ class _SlotTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isBudget = kind == SubmissionKind.budget;
+    final submitted = slot['submitted'] == true ||
+        ['submitted', 'pending', 'recorded', 'approved'].contains(
+          '${slot['submission_status'] ?? ''}'.toLowerCase(),
+        );
     final typeColor = isBudget ? AppColors.info : AppColors.primaryRed;
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
@@ -607,10 +611,12 @@ class _SlotTile extends StatelessWidget {
             SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
-                onPressed: onSubmit,
+                onPressed: submitted ? null : onSubmit,
                 style: AppCardButtonStyle.primary(),
                 icon: const Icon(Icons.upload_file_rounded, size: 18),
-                label: Text(isBudget ? 'Submit Budget' : 'Submit Report'),
+                label: Text(submitted
+                    ? 'Submitted - Awaiting Review'
+                    : (isBudget ? 'Submit Budget' : 'Submit Report')),
               ),
             ),
           ],
