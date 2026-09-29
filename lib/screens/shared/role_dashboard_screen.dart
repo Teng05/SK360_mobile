@@ -204,6 +204,9 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
                       setState(() => _activeFeedTab = index),
                   onLike: _toggleWallLike,
                   onRefresh: _refresh,
+                  canManage: _canManagePost,
+                  onEdit: _editPost,
+                  onDelete: _deletePost,
                 ),
               ],
             ),
@@ -220,6 +223,16 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
         .toList();
 
     if (key == 'wall_posts') {
+      final shownIds = result
+          .map((row) => '${row['announcement_id'] ?? row['id']}')
+          .toSet();
+      final announcements = _data['announcements'] as List<dynamic>? ?? [];
+      for (final item in announcements.whereType<Map>()) {
+        final announcement = Map<String, dynamic>.from(item);
+        announcement['post_category'] ??= 'announcement';
+        final id = '${announcement['announcement_id'] ?? announcement['id']}';
+        if (shownIds.add(id)) result.add(announcement);
+      }
       result.sort(_compareNewestPosts);
     }
 
@@ -248,9 +261,17 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
       'event',
     ][_activeFeedTab - 1];
     return posts.where((post) {
-      final category = (post['post_category'] ?? post['category'] ?? '')
+      final rawCategory = (post['post_category'] ?? post['category'] ?? post['title'] ?? '')
           .toString()
+          .trim()
           .toLowerCase();
+      final category = switch (rawCategory) {
+        'update' || 'community update' || 'event update' || 'event' || 'events' || 'program' => 'event',
+        'accomplishment' || 'accomplishments' || 'accomplishment_report' =>
+          'accomplishment',
+        'announcement' || 'announcements' => 'announcement',
+        _ => rawCategory,
+      };
       return category == needle;
     }).toList();
   }
@@ -285,8 +306,60 @@ class _MobileDashboardScreenState extends State<MobileDashboardScreen> {
     if (id == null) return;
 
     try {
-      await MobileApiService.toggleWallLike(id);
+      final response = await MobileApiService.toggleWallLike(id);
+      // Keep the visible card responsive even when the post itself was not
+      // changed and therefore is omitted by an incremental server sync.
+      final liked = response['liked'] == true || response['liked'] == 1;
+      final currentLikes = int.tryParse('${post['likes_count'] ?? 0}') ?? 0;
+      post['liked_by_current_user'] = liked;
+      post['likes_count'] = response['likes_count'] ??
+          (liked ? (currentLikes + 1) : (currentLikes > 0 ? currentLikes - 1 : 0));
       if (mounted) setState(() {});
+    } on MobileApiException catch (exception) {
+      if (mounted) _showMessage(exception.message);
+    }
+  }
+
+  bool _canManagePost(Map<String, dynamic> post) {
+    final current = MobileApiService.currentUser ?? {};
+    final currentId = '${current['user_id'] ?? current['id'] ?? ''}'.trim();
+    if (currentId.isEmpty) return false;
+    final authorId = '${post['user_id'] ?? post['author_id'] ?? post['created_by'] ?? post['posted_by'] ?? ''}'.trim();
+    return authorId.isNotEmpty && authorId == currentId;
+  }
+
+  Future<void> _editPost(Map<String, dynamic> post) async {
+    final saved = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (_) => CreatePostScreen(announcement: post)),
+    );
+    if (saved == true && mounted) {
+      await _refresh();
+      _showMessage('Post updated.');
+    }
+  }
+
+  Future<void> _deletePost(Map<String, dynamic> post) async {
+    final id = int.tryParse('${post['announcement_id'] ?? post['id'] ?? ''}');
+    if (id == null) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete post?'),
+        content: const Text('This post will be permanently deleted.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Delete')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await MobileApiService.deleteWallPost(id);
+      if (mounted) {
+        await _refresh();
+        _showMessage('Post deleted.');
+      }
     } on MobileApiException catch (exception) {
       if (mounted) _showMessage(exception.message);
     }
@@ -399,8 +472,16 @@ bool _isUpcomingMeeting(Map<String, dynamic> meeting) {
   }
 
   final scheduledAt = _meetingDateTime(meeting);
-  return scheduledAt != null &&
-      !scheduledAt.add(const Duration(hours: 1)).isBefore(DateTime.now());
+  if (scheduledAt == null) return false;
+  final endOfDay = DateTime(
+    scheduledAt.year,
+    scheduledAt.month,
+    scheduledAt.day,
+    23,
+    59,
+    59,
+  );
+  return !DateTime.now().isAfter(endOfDay);
 }
 
 int _compareMeetings(Map<String, dynamic> a, Map<String, dynamic> b) {
@@ -741,6 +822,9 @@ class _FeedSection extends StatelessWidget {
   final List<Map<String, dynamic>> posts;
   final Future<void> Function(Map<String, dynamic>) onLike;
   final Future<void> Function() onRefresh;
+  final bool Function(Map<String, dynamic>) canManage;
+  final Future<void> Function(Map<String, dynamic>) onEdit;
+  final Future<void> Function(Map<String, dynamic>) onDelete;
 
   const _FeedSection({
     required this.activeTab,
@@ -748,6 +832,9 @@ class _FeedSection extends StatelessWidget {
     required this.posts,
     required this.onLike,
     required this.onRefresh,
+    required this.canManage,
+    required this.onEdit,
+    required this.onDelete,
   });
 
   static const tabs = ['All', 'Announcements', 'Accomplishments', 'Events'];
@@ -786,6 +873,8 @@ class _FeedSection extends StatelessWidget {
               post: post,
               onLike: () => onLike(post),
               onCommentChanged: onRefresh,
+              onEdit: canManage(post) ? () => onEdit(post) : null,
+              onDelete: canManage(post) ? () => onDelete(post) : null,
             ),
           ),
       ],

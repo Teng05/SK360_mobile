@@ -13,7 +13,7 @@ class MobileApiService {
   // Use the live API by default. Override for local testing with --dart-define.
   static const String baseUrl = String.fromEnvironment(
     'SK360_API_BASE_URL',
-    defaultValue: 'https://sk360lipacity.org/api/mobile',
+    defaultValue: 'https://sk360lipacity.org//api/mobile',
   );
   static String webUrl(String path) {
     final root = baseUrl.replaceFirst(RegExp(r'/api/mobile$'), '');
@@ -233,6 +233,11 @@ class MobileApiService {
     return response;
   }
 
+  static Future<void> deleteWallPost(int announcementId) async {
+    await _request('DELETE', '/wall/posts/$announcementId');
+    await sync();
+  }
+
   static Future<Map<String, dynamic>> toggleWallLike(int announcementId) async {
     final response = await _request('POST', '/wall/posts/$announcementId/like');
     await sync();
@@ -386,6 +391,7 @@ class MobileApiService {
   static Future<Map<String, dynamic>> createEvent({
     required String title,
     required String description,
+    String? location,
     required DateTime startDateTime,
     DateTime? endDateTime,
     String eventType = 'event',
@@ -397,6 +403,7 @@ class MobileApiService {
       body: {
         'title': title,
         'description': description,
+        'location': location,
         'event_type': eventType,
         'start_datetime': startDateTime.toIso8601String(),
         if (endDateTime != null) 'end_datetime': endDateTime.toIso8601String(),
@@ -413,6 +420,7 @@ class MobileApiService {
     required int eventId,
     required String title,
     required String description,
+    String? location,
     required DateTime startDateTime,
     required DateTime endDateTime,
     required String eventType,
@@ -424,6 +432,7 @@ class MobileApiService {
       body: {
         'title': title,
         'description': description,
+        'location': location,
         'event_type': eventType,
         'start_datetime': startDateTime.toIso8601String(),
         'end_datetime': endDateTime.toIso8601String(),
@@ -432,6 +441,11 @@ class MobileApiService {
     );
     await sync();
     return response;
+  }
+
+  static Future<void> deleteEvent(int eventId) async {
+    await _request('DELETE', '/events/$eventId');
+    await sync();
   }
 
   static Future<Map<String, dynamic>> createMeeting({
@@ -842,19 +856,25 @@ class MobileApiService {
     required bool correctDocument,
     required bool correctPeriod,
     String? remarks,
-  }) => _request(
-    'POST',
-    '/consolidation/quality-review',
-    body: {
-      'source_type': sourceType,
-      'source_id': sourceId,
-      'status': status,
-      'complete_contents': completeContents,
-      'correct_document': correctDocument,
-      'correct_period': correctPeriod,
-      'remarks': remarks,
-    },
-  );
+  }) async {
+    final response = await _request(
+      'POST',
+      '/consolidation/quality-review',
+      body: {
+        'source_type': sourceType,
+        'source_id': sourceId,
+        'status': status,
+        'complete_contents': completeContents,
+        'correct_document': correctDocument,
+        'correct_period': correctPeriod,
+        'remarks': remarks,
+      },
+    );
+    // Refresh the shared payload so mobile reflects the same review status
+    // immediately after it is saved and web reads the same database row.
+    await sync();
+    return response;
+  }
 
   static Future<Map<String, dynamic>> sync({DateTime? since}) async {
     final query = since == null
@@ -862,6 +882,14 @@ class MobileApiService {
         : '?since=${Uri.encodeComponent(since.toIso8601String())}';
     final response = await _request('GET', '/sync$query');
     syncedData = response;
+    // The sync payload is also the source of truth for profile changes made
+    // on the web. Replace the cached user (including a cleared photo URL)
+    // instead of keeping the stale local profile object.
+    final syncedUser = response['user'];
+    if (syncedUser is Map) {
+      currentUser = Map<String, dynamic>.from(syncedUser);
+      await _saveSession();
+    }
 
     return response;
   }

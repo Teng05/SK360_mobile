@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import '../../services/mobile_api_service.dart';
 import '../../ui/app_ui.dart';
 import '../../widgets/president_components.dart';
+import 'leadership_add_screen.dart';
 
 class PresidentLeadershipScreen extends StatefulWidget {
   const PresidentLeadershipScreen({super.key});
@@ -70,9 +71,9 @@ class _PresidentLeadershipScreenState extends State<PresidentLeadershipScreen> {
                       tooltip: 'Add leadership member',
                       icon: const Icon(Icons.person_add_alt_1_outlined),
                       onSelected: (value) {
-                        if (value == 'councilor') _showAddCouncilDialog();
-                        if (value == 'secretary') _showAddSecretaryDialog();
-                        if (value == 'chairman') _showAddChairmanDialog();
+                        if (value == 'councilor') _openAddLeadership('Councilor');
+                        if (value == 'secretary') _openAddLeadership('Secretary');
+                        if (value == 'chairman') _openAddLeadership('Chairman');
                       },
                       itemBuilder: (_) => [
                         if (_isPresident)
@@ -205,6 +206,12 @@ class _PresidentLeadershipScreenState extends State<PresidentLeadershipScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _openAddLeadership(String role) async {
+    final options = _barangays().map((b) => {'barangay_id': b.id, 'barangay_name': b.name}).toList();
+    final created = await Navigator.push<bool>(context, MaterialPageRoute(builder: (_) => LeadershipAddScreen(role: role, barangays: options)));
+    if (created == true && mounted) await _refresh();
   }
 
   List<_BarangayOption> _barangays() {
@@ -389,6 +396,7 @@ class _PresidentLeadershipScreenState extends State<PresidentLeadershipScreen> {
     return '2024-2026';
   }
 
+  // ignore: unused_element
   Future<void> _showAddCouncilDialog() async {
     var name = '';
     var email = '';
@@ -616,6 +624,7 @@ class _PresidentLeadershipScreenState extends State<PresidentLeadershipScreen> {
     );
   }
 
+  // ignore: unused_element
   Future<void> _showAddSecretaryDialog() async {
     var firstName = '';
     var lastName = '';
@@ -719,6 +728,7 @@ class _PresidentLeadershipScreenState extends State<PresidentLeadershipScreen> {
     termController.dispose();
   }
 
+  // ignore: unused_element
   Future<void> _showAddChairmanDialog() async {
     final barangays = _barangays();
     if (barangays.isEmpty) {

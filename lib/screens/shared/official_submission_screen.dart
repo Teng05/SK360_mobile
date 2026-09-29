@@ -166,6 +166,10 @@ class _OfficialSubmissionScreenState extends State<OfficialSubmissionScreen>
     final roleLabel = role == 'sk_secretary' ? 'sk secretary' : 'sk chairman';
     final now = DateTime.now();
     final rows = _rows('submission_slots');
+    final reportKey = widget.kind == SubmissionKind.budget
+        ? 'budget_reports'
+        : 'accomplishment_reports';
+    final submittedRows = _rows(reportKey);
 
     return rows.where((slot) {
       final type = slot['submission_type']?.toString().trim().toLowerCase();
@@ -177,7 +181,26 @@ class _OfficialSubmissionScreenState extends State<OfficialSubmissionScreen>
       final inDate =
           (start == null || !now.isBefore(start)) &&
           (end == null || !now.isAfter(end.add(const Duration(days: 1))));
-      return type == _submissionType && status == 'open' && inRole && inDate;
+      if (type != _submissionType || status != 'open' || !inRole || !inDate) {
+        return false;
+      }
+
+      // Reports submitted from either web or mobile are returned by /sync.
+      // Join them to the slot so both clients enforce the same lock state.
+      final slotId = int.tryParse('${slot['slot_id'] ?? ''}');
+      Map<String, dynamic>? submission;
+      for (final row in submittedRows) {
+        if (int.tryParse('${row['slot_id'] ?? ''}') == slotId) {
+          submission = row;
+          break;
+        }
+      }
+      if (submission != null) {
+        slot['submitted'] = true;
+        slot['submission_status'] = submission['status'] ?? 'submitted';
+        slot['quality_status'] = submission['quality_status'] ?? 'pending';
+      }
+      return true;
     }).toList();
   }
 
@@ -525,10 +548,15 @@ class _SlotTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isBudget = kind == SubmissionKind.budget;
+    final qualityStatus = '${slot['quality_status'] ?? ''}'.toLowerCase();
+    final submissionStatus = '${slot['submission_status'] ?? ''}'.toLowerCase();
+    final needsRevision = qualityStatus == 'needs_revision' ||
+        submissionStatus == 'needs_revision';
     final submitted = slot['submitted'] == true ||
         ['submitted', 'pending', 'recorded', 'approved'].contains(
-          '${slot['submission_status'] ?? ''}'.toLowerCase(),
+          submissionStatus,
         );
+    final locked = submitted && !needsRevision;
     final typeColor = isBudget ? AppColors.info : AppColors.primaryRed;
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
@@ -611,12 +639,14 @@ class _SlotTile extends StatelessWidget {
             SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
-                onPressed: submitted ? null : onSubmit,
+                onPressed: locked ? null : onSubmit,
                 style: AppCardButtonStyle.primary(),
                 icon: const Icon(Icons.upload_file_rounded, size: 18),
-                label: Text(submitted
-                    ? 'Submitted - Awaiting Review'
-                    : (isBudget ? 'Submit Budget' : 'Submit Report')),
+                label: Text(needsRevision
+                    ? (isBudget ? 'Resubmit Budget' : 'Resubmit Report')
+                    : locked
+                        ? 'Submitted - Awaiting Review'
+                        : (isBudget ? 'Submit Budget' : 'Submit Report')),
               ),
             ),
           ],

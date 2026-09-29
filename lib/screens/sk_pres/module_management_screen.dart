@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../../services/mobile_api_service.dart';
 import '../../ui/app_ui.dart';
 import '../../widgets/president_components.dart';
+import 'submission_slot_form_screen.dart';
+import 'edit_submission_slot_screen.dart';
 import '../shared/meeting_webview_screen.dart';
 
 class ModuleManagementScreen extends StatefulWidget {
@@ -168,7 +170,10 @@ class _ModuleManagementScreenState extends State<ModuleManagementScreen> {
                 padding: const EdgeInsets.fromLTRB(16, 18, 16, 6),
                 child: AppActionButton(
                   label: 'Create New Slot',
-                  onPressed: _showCreateDialog,
+                  onPressed: () async {
+                    final created = await Navigator.push<bool>(context, MaterialPageRoute(builder: (_) => const SubmissionSlotFormScreen()));
+                    if (created == true && mounted) _loadSlots();
+                  },
                 ),
               ),
               if (_slots.isEmpty && !_isLoading && _loadError == null)
@@ -246,6 +251,7 @@ class _ModuleManagementScreenState extends State<ModuleManagementScreen> {
     }
   }
 
+  // ignore: unused_element
   Future<void> _showCreateDialog() async {
     DateTime startDate = DateTime.now();
     DateTime endDate = DateTime.now().add(const Duration(days: 7));
@@ -507,57 +513,12 @@ class _ModuleManagementScreenState extends State<ModuleManagementScreen> {
   }
 
   Future<void> _editSlot(Map<String, dynamic> slot) async {
-    final id = int.tryParse('${slot['slot_id']}');
-    if (id == null) return;
-    final title = TextEditingController(text: '${slot['title'] ?? ''}');
-    final description = TextEditingController(text: '${slot['description'] ?? ''}');
-    DateTime start = DateTime.tryParse('${slot['start_date']}') ?? DateTime.now();
-    DateTime end = DateTime.tryParse('${slot['end_date']}') ?? start.add(const Duration(days: 7));
-    var status = _isOpen(slot) ? 'open' : 'closed';
-    var role = ['SK Chairman', 'SK Secretary', 'Both'].contains(slot['role']) ? '${slot['role']}' : 'Both';
-    final originalTitle = title.text.trim();
-    final originalDescription = description.text.trim();
-    final originalStart = start;
-    final originalEnd = end;
-    final originalStatus = status;
-    final originalRole = role;
-    await showDialog<void>(context: context, builder: (dialogContext) => StatefulBuilder(
-      builder: (_, setDialog) => AlertDialog(
-        title: const Text('Edit Submission Slot'),
-      insetPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 24),
-      content: SizedBox(width: 520, child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
-          TextField(controller: title, onChanged: (_) => setDialog(() {}), decoration: const InputDecoration(labelText: 'Title')),
-          TextField(controller: description, onChanged: (_) => setDialog(() {}), maxLines: 2, decoration: const InputDecoration(labelText: 'Description')),
-          const SizedBox(height: 12),
-          _DatePickerField(label: 'Start date', date: start, onTap: () async { final d = await _pickDate(initialDate: start); if (d != null) setDialog(() => start = d); }),
-          _DatePickerField(label: 'End date', date: end, onTap: () async { final d = await _pickDate(initialDate: end, firstDate: start); if (d != null) setDialog(() => end = d); }),
-          DropdownButtonFormField<String>(initialValue: status, items: const [DropdownMenuItem(value: 'open', child: Text('Open')), DropdownMenuItem(value: 'closed', child: Text('Closed'))], onChanged: (v) => setDialog(() => status = v ?? status), decoration: const InputDecoration(labelText: 'Slot status')),
-          DropdownButtonFormField<String>(initialValue: role, items: const [DropdownMenuItem(value: 'SK Chairman', child: Text('SK Chairman')), DropdownMenuItem(value: 'SK Secretary', child: Text('SK Secretary')), DropdownMenuItem(value: 'Both', child: Text('Both'))], onChanged: (v) => setDialog(() => role = v ?? role), decoration: const InputDecoration(labelText: 'Target role')),
-        ]))),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
-          FilledButton(onPressed: title.text.trim() == originalTitle && description.text.trim() == originalDescription && start == originalStart && end == originalEnd && status == originalStatus && role == originalRole ? null : () async {
-            if (title.text.trim().isEmpty || end.isBefore(start)) {
-              _showMessage('Enter a title and valid dates.');
-              return;
-            }
-            try {
-              await MobileApiService.updateSubmissionSlot(slotId: id, title: title.text.trim(), description: description.text.trim(), startDate: start, endDate: end, status: status, role: role);
-              if (dialogContext.mounted) Navigator.pop(dialogContext);
-              await _loadSlots();
-              if (mounted) _showMessage('Submission slot updated.');
-            } on MobileApiException catch (e) {
-              if (mounted) _showMessage(e.message);
-            } catch (e) {
-              if (mounted) _showMessage('Unable to save slot changes.');
-            }
-          }, child: const Text('Save')),
-        ],
-      ),
-    ));
-    title.dispose(); description.dispose();
+    final updated = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (_) => EditSubmissionSlotScreen(slot: slot)),
+    );
+    if (updated == true && mounted) await _loadSlots();
   }
-
   Future<void> _viewSubmissions(Map<String, dynamic> slot) async {
     final slotId = int.tryParse('${slot['slot_id']}');
     if (slotId == null) return;
@@ -1206,3 +1167,4 @@ String _dateText(DateTime date) {
 
   return '${date.year}-$month-$day';
 }
+

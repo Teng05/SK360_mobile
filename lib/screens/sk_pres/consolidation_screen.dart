@@ -28,6 +28,7 @@ class _ConsolidationScreenState extends State<ConsolidationScreen> {
   List<int> _years = [DateTime.now().year];
   String _searchQuery = '';
   int _currentPage = 1;
+  bool _initialLoad = true;
   String _reviewQuery = '';
   String _reviewFilter = 'all';
   int _reviewPage = 1;
@@ -317,7 +318,9 @@ class _ConsolidationScreenState extends State<ConsolidationScreen> {
     });
     try {
       final response = await MobileApiService.consolidation(
-        year: _year,
+        // Let the API choose the active-term year on the first load, matching
+        // the web consolidation default instead of using the phone's clock.
+        year: _initialLoad ? null : _year,
         period: _period,
         month: _month,
         quarter: _quarter,
@@ -337,6 +340,8 @@ class _ConsolidationScreenState extends State<ConsolidationScreen> {
                 .toSet()
                 .toList()
               ..sort((a, b) => b.compareTo(a));
+        _year = int.tryParse('${response['filters']?['year']}') ?? _year;
+        _initialLoad = false;
       });
     } on MobileApiException catch (exception) {
       if (mounted) setState(() => _loadError = exception.message);

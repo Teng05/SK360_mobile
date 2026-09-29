@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../services/mobile_api_service.dart';
 import '../../ui/app_ui.dart';
 import '../../widgets/president_components.dart';
+import 'calendar_event_form_screen.dart';
 
 class PrototypeCalendarScreen extends StatefulWidget {
   const PrototypeCalendarScreen({super.key});
@@ -83,7 +84,10 @@ class _PrototypeCalendarScreenState extends State<PrototypeCalendarScreen> {
                     'submission dates in one place.',
                 action: _canScheduleEvents
                     ? FilledButton.icon(
-                        onPressed: () => _showScheduleDialog(),
+                        onPressed: () async {
+                          final created = await Navigator.push<bool>(context, MaterialPageRoute(builder: (_) => CalendarEventFormScreen(initialDate: _selectedDate)));
+                          if (created == true && mounted) _refresh();
+                        },
                         icon: const Icon(Icons.add_rounded, size: 20),
                         label: const Text('Schedule event'),
                       )
@@ -119,14 +123,14 @@ class _PrototypeCalendarScreenState extends State<PrototypeCalendarScreen> {
                 child: _EventsForDateCard(
                   date: _selectedDate,
                   events: selectedEvents,
-                  onEdit: _canScheduleEvents ? _showScheduleDialog : null,
+                  onEdit: _canScheduleEvents ? _openEventEditor : null,
                 ),
               ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 24, 16, 0),
                 child: _AllEventsCard(
                   events: events,
-                  onEdit: _canScheduleEvents ? _showScheduleDialog : null,
+                  onEdit: _canScheduleEvents ? _openEventEditor : null,
                 ),
               ),
             ],
@@ -176,6 +180,8 @@ class _PrototypeCalendarScreenState extends State<PrototypeCalendarScreen> {
     handleRoleNavSelection(context, item);
   }
 
+  // Kept for the legacy edit flow while event creation uses the full screen.
+  // ignore: unused_element
   Future<void> _showScheduleDialog([Map<String, dynamic>? event]) async {
     if (!_canScheduleEvents) return;
 
@@ -199,13 +205,16 @@ class _PrototypeCalendarScreenState extends State<PrototypeCalendarScreen> {
     await showDialog<void>(
       context: context,
       builder: (context) => AppDialogForm(
+        controllerCount: 3,
         builder: (context, controllers) {
           final titleController = controllers[0];
           final descriptionController = controllers[1];
+          final locationController = controllers[2];
           if (!initialized) {
             titleController.text = event?['title']?.toString() ?? '';
             descriptionController.text =
                 event?['description']?.toString() ?? '';
+            locationController.text = event?['location']?.toString() ?? '';
             initialized = true;
           }
           return StatefulBuilder(
@@ -229,6 +238,12 @@ class _PrototypeCalendarScreenState extends State<PrototypeCalendarScreen> {
                         hint: 'Description',
                         onChanged: (_) => setDialogState(() {}),
                         maxLines: 2,
+                      ),
+                      const SizedBox(height: 10),
+                      _DialogField(
+                        controller: locationController,
+                        hint: 'Location (optional)',
+                        onChanged: (_) => setDialogState(() {}),
                       ),
                       const SizedBox(height: 10),
                       AppAdaptiveRow(
@@ -367,6 +382,7 @@ class _PrototypeCalendarScreenState extends State<PrototypeCalendarScreen> {
                   onPressed: isSubmitting || (event != null &&
                       titleController.text.trim() == (event['title']?.toString() ?? '') &&
                       descriptionController.text.trim() == (event['description']?.toString() ?? '') &&
+                      locationController.text.trim() == (event['location']?.toString() ?? '') &&
                       startDate == (existingStart == null ? startDate : DateTime(existingStart.year, existingStart.month, existingStart.day)) &&
                       endDate == (existingEnd == null ? endDate : DateTime(existingEnd.year, existingEnd.month, existingEnd.day)) &&
                       eventType == (event['event_type']?.toString() ?? 'program') &&
@@ -413,6 +429,9 @@ class _PrototypeCalendarScreenState extends State<PrototypeCalendarScreen> {
                                 : int.tryParse('${event['event_id']}'),
                             title: titleController.text.trim(),
                             description: descriptionController.text.trim(),
+                            location: locationController.text.trim().isEmpty
+                                ? null
+                                : locationController.text.trim(),
                             startDateTime: startDateTime,
                             endDateTime: endDateTime,
                             eventType: eventType,
@@ -438,6 +457,14 @@ class _PrototypeCalendarScreenState extends State<PrototypeCalendarScreen> {
         },
       ),
     );
+  }
+
+  Future<void> _openEventEditor(Map<String, dynamic> event) async {
+    final saved = await Navigator.push<bool>(context, MaterialPageRoute(builder: (_) => CalendarEventFormScreen(
+      initialDate: DateTime.tryParse(event['start_datetime']?.toString() ?? '') ?? _selectedDate,
+      event: event,
+    )));
+    if (saved == true && mounted) await _refresh();
   }
 
   Future<DateTime?> _pickDate(DateTime initialDate, {DateTime? firstDate}) {
@@ -466,6 +493,7 @@ class _PrototypeCalendarScreenState extends State<PrototypeCalendarScreen> {
     int? eventId,
     required String title,
     required String description,
+    String? location,
     required DateTime startDateTime,
     required DateTime endDateTime,
     required String eventType,
@@ -477,6 +505,7 @@ class _PrototypeCalendarScreenState extends State<PrototypeCalendarScreen> {
         await MobileApiService.createEvent(
           title: title,
           description: description,
+          location: location,
           startDateTime: startDateTime,
           endDateTime: endDateTime,
           eventType: eventType,
@@ -487,6 +516,7 @@ class _PrototypeCalendarScreenState extends State<PrototypeCalendarScreen> {
           eventId: eventId,
           title: title,
           description: description,
+          location: location,
           startDateTime: startDateTime,
           endDateTime: endDateTime,
           eventType: eventType,

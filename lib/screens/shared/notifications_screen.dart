@@ -213,7 +213,11 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                             return _NotificationCard(
                               item: item,
                               opening: _opening && _openingId == item.id,
-                              onTap: busy || item.id == null
+                              // Notifications remain navigable even after
+                              // they have been read or the underlying action
+                              // has been completed. The id is only needed to
+                              // mark the item as read, not to open its area.
+                              onTap: busy
                                   ? null
                                   : () => _openNotification(item),
                             );

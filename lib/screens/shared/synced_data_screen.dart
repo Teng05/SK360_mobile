@@ -30,6 +30,8 @@ class _SyncedDataScreenState extends State<SyncedDataScreen> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   bool _isLoading = false;
   String? _loadError;
+  int _page = 1;
+  static const _pageSize = 10;
 
   @override
   void initState() {
@@ -40,6 +42,9 @@ class _SyncedDataScreenState extends State<SyncedDataScreen> {
   @override
   Widget build(BuildContext context) {
     final rows = _rows();
+    final pageCount = rows.isEmpty ? 1 : (rows.length / _pageSize).ceil();
+    final page = _page.clamp(1, pageCount);
+    final visibleRows = rows.skip((page - 1) * _pageSize).take(_pageSize).toList();
 
     return Scaffold(
       key: _scaffoldKey,
@@ -112,13 +117,13 @@ class _SyncedDataScreenState extends State<SyncedDataScreen> {
                   ),
                 )
               else
-                ...rows.map(
+                ...visibleRows.map(
                   (row) => Padding(
                     padding: EdgeInsets.symmetric(
-                      horizontal: widget.dataKey == 'wall_posts' ? 0 : 16,
-                      vertical: widget.dataKey == 'wall_posts' ? 0 : 6,
+                      horizontal: {'wall_posts', 'announcements'}.contains(widget.dataKey) ? 0 : 16,
+                      vertical: {'wall_posts', 'announcements'}.contains(widget.dataKey) ? 0 : 6,
                     ),
-                    child: widget.dataKey == 'wall_posts'
+                    child: {'wall_posts', 'announcements'}.contains(widget.dataKey)
                         ? CommunityPostCard(
                             post: row,
                             onLike: row['visibility'] == 'public'
@@ -128,9 +133,21 @@ class _SyncedDataScreenState extends State<SyncedDataScreen> {
                             onEdit: _canManageAnnouncement(row)
                                 ? () => _editAnnouncement(row)
                                 : null,
+                            onDelete: _canManageAnnouncement(row)
+                                ? () => _deleteAnnouncement(row)
+                                : null,
                           )
                         : _DataCard(row: row),
                   ),
+                ),
+              if (rows.length > _pageSize)
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                    IconButton(onPressed: page > 1 ? () => setState(() => _page = page - 1) : null, icon: const Icon(Icons.chevron_left)),
+                    Text('Page $page of $pageCount'),
+                    IconButton(onPressed: page < pageCount ? () => setState(() => _page = page + 1) : null, icon: const Icon(Icons.chevron_right)),
+                  ]),
                 ),
             ],
           ),
@@ -170,22 +187,27 @@ class _SyncedDataScreenState extends State<SyncedDataScreen> {
         .map((row) => Map<String, dynamic>.from(row as Map))
         .toList();
 
-    if (widget.dataKey == 'wall_posts') {
-      final shownIds = rows.map((row) => '${row['announcement_id']}').toSet();
-      final permitted =
-          MobileApiService.syncedData?['announcements'] as List? ?? [];
-      for (final item in permitted.whereType<Map>()) {
+    if (widget.dataKey == 'wall_posts' || widget.dataKey == 'announcements') {
+      final wallPosts = MobileApiService.syncedData?['wall_posts'] as List? ?? [];
+      final announcements = MobileApiService.syncedData?['announcements'] as List? ?? [];
+      // wall_posts contains the live like/comment counters. Overlay it on
+      // the announcement rows instead of keeping the older counter-less row.
+      final merged = <String, Map<String, dynamic>>{};
+      for (final item in [...announcements, ...wallPosts].whereType<Map>()) {
         final announcement = Map<String, dynamic>.from(item);
-        if (shownIds.add('${announcement['announcement_id']}')) {
-          rows.add(announcement);
-        }
+        merged['${announcement['announcement_id']}'] = announcement;
       }
+      rows
+        ..clear()
+        ..addAll(merged.values);
     }
 
     if (widget.dataKey == 'wall_posts' || widget.dataKey == 'announcements') {
       if (widget.dataKey == 'announcements') {
-        rows.removeWhere((row) =>
-            '${row['post_category'] ?? ''}'.toLowerCase() != 'announcement');
+        rows.removeWhere((row) {
+          final category = '${row['post_category'] ?? row['category'] ?? row['title'] ?? ''}'.toLowerCase().trim();
+          return !{'announcement', 'announcements'}.contains(category);
+        });
       }
       rows.sort((a, b) {
         final bDate = DateTime.tryParse(b['created_at']?.toString() ?? '');
@@ -204,6 +226,7 @@ class _SyncedDataScreenState extends State<SyncedDataScreen> {
   }
 
   Future<void> _refresh() async {
+    _page = 1;
     setState(() {
       _isLoading = true;
       _loadError = null;
@@ -237,12 +260,8 @@ class _SyncedDataScreenState extends State<SyncedDataScreen> {
 
   bool _canManageAnnouncement(Map<String, dynamic> row) {
     if (!{'wall_posts', 'announcements'}.contains(widget.dataKey) || !_canCreatePost) return false;
-    final title = row['title']?.toString().trim().toLowerCase() ?? '';
-    return !{
-      'community update',
-      'event update',
-      'accomplishment',
-    }.contains(title);
+    final category = '${row['post_category'] ?? row['category'] ?? row['title'] ?? ''}'.trim().toLowerCase();
+    return category == 'announcement' || category == 'announcements';
   }
 
   Future<void> _editAnnouncement(Map<String, dynamic> row) async {
@@ -260,8 +279,30 @@ class _SyncedDataScreenState extends State<SyncedDataScreen> {
     final id = int.tryParse('${row['announcement_id']}');
     if (id == null) return;
     try {
-      await MobileApiService.toggleWallLike(id);
+      final response = await MobileApiService.toggleWallLike(id);
+      final liked = response['liked'] == true || response['liked'] == 1;
+      final currentLikes = int.tryParse('${row['likes_count'] ?? 0}') ?? 0;
+      row['liked_by_current_user'] = liked;
+      row['likes_count'] = response['likes_count'] ??
+          (liked ? currentLikes + 1 : (currentLikes > 0 ? currentLikes - 1 : 0));
+      if (response['feedback_count'] != null) {
+        row['feedback_count'] = response['feedback_count'];
+      }
       if (mounted) setState(() {});
+    } on MobileApiException catch (exception) {
+      if (mounted) _showMessage(exception.message);
+    }
+  }
+
+  Future<void> _deleteAnnouncement(Map<String, dynamic> row) async {
+    final id = int.tryParse('${row['announcement_id']}');
+    if (id == null) return;
+    try {
+      await MobileApiService.deleteWallPost(id);
+      if (mounted) {
+        setState(() {});
+        _showMessage('Post deleted.');
+      }
     } on MobileApiException catch (exception) {
       if (mounted) _showMessage(exception.message);
     }

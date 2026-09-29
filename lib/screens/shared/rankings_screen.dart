@@ -35,6 +35,7 @@ class _RankingsScreenState extends State<RankingsScreen> {
     final historyPeriods = history
         .map((entry) => _text(entry['period']))
         .where((value) => value.isNotEmpty)
+        .where((value) => !_isFuturePeriod(value))
         .toSet()
         .toList();
     final selectedPeriod = historyPeriods.contains(_selectedHistoryPeriod)
@@ -101,7 +102,9 @@ class _RankingsScreenState extends State<RankingsScreen> {
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: _RankingHistoryDropdown(
-                    history: history,
+                    history: history
+                        .where((entry) => !_isFuturePeriod(_text(entry['period'])))
+                        .toList(),
                     selectedPeriod: selectedPeriod,
                     selectedCount: selectedHistoryCount,
                     onChanged: (value) {

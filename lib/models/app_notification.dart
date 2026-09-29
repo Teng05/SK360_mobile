@@ -71,7 +71,11 @@ class AppNotification {
     if (type == 'report_slot' ||
         type == 'budget_slot' ||
         type.startsWith('submission') ||
-        type.endsWith('_report')) {
+        type.endsWith('_report') ||
+        type.contains('report') ||
+        type.contains('budget') ||
+        type.contains('accomplishment') ||
+        type.contains('slot')) {
       return NotificationKind.submission;
     }
     if (type.startsWith('module')) return NotificationKind.module;
@@ -109,7 +113,21 @@ class AppNotification {
       NotificationKind.module =>
         president ? AppRoutes.moduleManagement : AppRoutes.reports,
       NotificationKind.ranking => AppRoutes.rankings,
-      NotificationKind.other => null,
+      NotificationKind.other => _section == 'announcements'
+          ? AppRoutes.announcements
+          : _section == 'calendar' || _section == 'events'
+          ? AppRoutes.presidentCalendar
+          : _section == 'meetings'
+          ? AppRoutes.videoMeetings
+          : _section == 'rankings'
+          ? AppRoutes.rankings
+          : _section == 'modules'
+          ? AppRoutes.moduleManagement
+          : _section == 'reports'
+          ? AppRoutes.reports
+          : _section == 'budget'
+          ? AppRoutes.budget
+          : null,
     };
   }
 }

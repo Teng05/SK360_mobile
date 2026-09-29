@@ -24,14 +24,12 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   late final TextEditingController _content = TextEditingController(
     text: widget.announcement?['content']?.toString() ?? widget.initialContent,
   );
-  final _link = TextEditingController();
   late String _category = widget.announcement == null
       ? widget.initialCategory
       : 'announcement';
   late String _visibility =
       widget.announcement?['visibility']?.toString() ?? 'public';
   bool _posting = false;
-  bool _showLink = false;
   bool _published = false;
   bool _discarding = false;
   String? _error;
@@ -39,7 +37,6 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   @override
   void dispose() {
     _content.dispose();
-    _link.dispose();
     super.dispose();
   }
 
@@ -56,7 +53,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 
   Future<void> _leave() async {
     if (_posting || _discarding) return;
-    if (_content.text.trim().isEmpty && _link.text.trim().isEmpty) {
+    if (_content.text.trim().isEmpty) {
       Navigator.pop(context);
       return;
     }
@@ -90,7 +87,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   }
 
   Future<void> _submit() async {
-    final link = _showLink ? _link.text.trim() : '';
+    final link = '';
     final uri = Uri.tryParse(link);
     if (link.isNotEmpty &&
         (uri == null ||
@@ -158,8 +155,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
           _published ||
           _discarding ||
           (!_posting &&
-              _content.text.trim().isEmpty &&
-              _link.text.trim().isEmpty),
+              _content.text.trim().isEmpty),
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop) _leave();
       },
@@ -177,9 +173,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
               padding: const EdgeInsets.only(right: 16),
               child: FilledButton(
                 onPressed:
-                    _posting ||
-                        (_content.text.trim().isEmpty &&
-                            _link.text.trim().isEmpty)
+                    _posting || _content.text.trim().isEmpty
                     ? null
                     : _submit,
                 child: Text(
@@ -331,50 +325,6 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                       : () => setState(() => _visibility = 'officials_only'),
                 ),
               ],
-              const SizedBox(height: 20),
-              ListTile(
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 8,
-                ),
-                tileColor: AppColors.surface,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(18),
-                ),
-                leading: const AppIconTile(icon: Icons.link_rounded),
-                title: const Text('Add a link'),
-                subtitle: const Text('Share a photo album, video, or resource'),
-                trailing: Icon(
-                  _showLink
-                      ? Icons.remove_circle_outline
-                      : Icons.add_circle_outline,
-                ),
-                onTap: _posting
-                    ? null
-                    : () => setState(() => _showLink = !_showLink),
-              ),
-              const SizedBox(height: 12),
-              if (_showLink)
-                TextField(
-                  controller: _link,
-                  enabled: !_posting,
-                  keyboardType: TextInputType.url,
-                  onChanged: (_) => setState(() {}),
-                  decoration: const InputDecoration(
-                    hintText: 'https://',
-                    labelText: 'Attachment link',
-                  ),
-                ),
-              const ListTile(
-                contentPadding: EdgeInsets.zero,
-                enabled: false,
-                leading: Icon(Icons.photo_library_outlined),
-                title: Text('Photo / video'),
-                subtitle: Text(
-                  'Uploads are not available yet. You can add a link instead.',
-                ),
-              ),
-              const SizedBox(height: 12),
               Text(
                 _officialsOnly
                     ? 'Only SK officials will see this announcement in the '
@@ -383,7 +333,9 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                           'community.',
                 style: const TextStyle(
                   color: AppColors.lightText,
-                  fontSize: 13,
+                  fontSize: 15,
+                  height: 1.35,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
               if (_error != null)

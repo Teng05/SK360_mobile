@@ -49,7 +49,7 @@ class MyApp extends StatelessWidget {
       AppRoutes.announcements: (context) => const SyncedDataScreen(
         title: 'Announcements',
         subtitle: 'Public posts',
-        dataKey: 'wall_posts',
+        dataKey: 'announcements',
         icon: Icons.campaign_outlined,
         allowCreatePost: true,
       ),

@@ -4,6 +4,7 @@ import '../../services/mobile_api_service.dart';
 import '../shared/native_agora_meeting_screen.dart';
 import '../../ui/app_ui.dart';
 import '../../widgets/president_components.dart';
+import 'create_meeting_screen.dart';
 
 class PresidentMeetingsScreen extends StatefulWidget {
   const PresidentMeetingsScreen({super.key});
@@ -97,7 +98,10 @@ class _PresidentMeetingsScreenState extends State<PresidentMeetingsScreen> {
                   child: AppActionButton(
                     label: 'Create Meeting',
                     icon: Icons.video_call_outlined,
-                    onPressed: _showCreateDialog,
+                    onPressed: () async {
+                      final created = await Navigator.push<bool>(context, MaterialPageRoute(builder: (_) => const CreateMeetingScreen()));
+                      if (created == true && mounted) _refresh();
+                    },
                   ),
                 ),
               const SizedBox(height: 22),
@@ -747,10 +751,14 @@ class _MeetingItem {
   bool get isPast {
     final now = DateTime.now();
     final cancelled = status == 'cancelled' || status == 'canceled';
-    final completed = status == 'completed' && !scheduledAt.isAfter(now);
-    return cancelled ||
-        completed ||
-        scheduledAt.add(const Duration(hours: 1)).isBefore(now);
+    // A meeting stays in Upcoming until it is explicitly ended, or until
+    // the scheduled calendar date has finished. Do not remove it one hour
+    // after the start time because meetings can run longer than that.
+    final completed = status == 'completed';
+    final dateExpired = now.isAfter(
+      DateTime(scheduledAt.year, scheduledAt.month, scheduledAt.day, 23, 59, 59),
+    );
+    return cancelled || completed || dateExpired;
   }
 
   bool get canJoin => isUpcoming;

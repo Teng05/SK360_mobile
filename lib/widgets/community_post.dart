@@ -10,12 +10,14 @@ class CommunityPostCard extends StatefulWidget {
   final Future<void> Function()? onLike;
   final Future<void> Function()? onCommentChanged;
   final VoidCallback? onEdit;
+  final VoidCallback? onDelete;
   const CommunityPostCard({
     super.key,
     required this.post,
     this.onLike,
     this.onCommentChanged,
     this.onEdit,
+    this.onDelete,
   });
 
   @override
@@ -29,9 +31,9 @@ class _CommunityPostCardState extends State<CommunityPostCard> {
   @override
   Widget build(BuildContext context) {
     final post = widget.post;
-    final author = post['author_name']?.toString() ?? 'SK 360 Official';
+    final author = _authorName(post);
     final content = post['content']?.toString() ?? '';
-    final category = post['title']?.toString() ?? 'Update';
+    final category = (post['post_category'] ?? post['category'] ?? post['title'] ?? 'Update').toString();
     final liked =
         post['liked_by_current_user'] == true ||
         post['liked_by_current_user'] == 1;
@@ -75,31 +77,32 @@ class _CommunityPostCardState extends State<CommunityPostCard> {
                       ],
                     ),
                   ),
-                  PopupMenuButton<String>(
-                    tooltip: 'Post options',
-                    onSelected: (value) {
+                  if (widget.onEdit != null || widget.onDelete != null)
+                    PopupMenuButton<String>(
+                      tooltip: 'Post options',
+                      onSelected: (value) {
                       if (value == 'edit') {
                         widget.onEdit?.call();
+                      } else if (value == 'delete') {
+                        widget.onDelete?.call();
                       } else {
                         _copy(author, content);
                       }
-                    },
-                    itemBuilder: (_) => [
+                      },
+                      itemBuilder: (_) => [
                       if (widget.onEdit != null)
                         const PopupMenuItem(
                           value: 'edit',
-                          child: Text('Edit announcement'),
+                          child: Text('Edit post'),
                         ),
-                      const PopupMenuItem(
-                        value: 'copy',
-                        child: Text('Copy post text'),
+                      if (widget.onDelete != null)
+                        const PopupMenuItem(value: 'delete', child: Text('Delete post')),
+                      ],
+                      icon: const Icon(
+                        Icons.more_horiz_rounded,
+                        color: AppColors.lightText,
                       ),
-                    ],
-                    icon: const Icon(
-                      Icons.more_horiz_rounded,
-                      color: AppColors.lightText,
                     ),
-                  ),
                 ],
               ),
               const SizedBox(height: 12),
@@ -292,10 +295,65 @@ class _CommunityPostCardState extends State<CommunityPostCard> {
       builder: (_) => _CommentsSheet(
         announcementId: id,
         title: widget.post['title']?.toString() ?? 'Post comments',
-        onCommentPosted: widget.onCommentChanged,
+        onCommentPosted: () async {
+          // Update the visible counter immediately, then refresh from the
+          // shared API so the count remains consistent with the web feed.
+          final count = int.tryParse('${widget.post['feedback_count'] ?? 0}') ?? 0;
+          widget.post['feedback_count'] = count + 1;
+          if (mounted) setState(() {});
+          await widget.onCommentChanged?.call();
+        },
       ),
     );
   }
+}
+
+String _authorName(Map<String, dynamic> post) {
+  final nested = post['author'];
+  if (nested is Map) {
+    final nestedName = nested['name']?.toString().trim() ??
+        '${nested['first_name'] ?? ''} ${nested['last_name'] ?? ''}'.trim();
+    if (nestedName.isNotEmpty && nestedName.toLowerCase() != 'null') {
+      return nestedName;
+    }
+  }
+  for (final key in const [
+    'author_name',
+    'user_name',
+    'full_name',
+    'name',
+    'posted_by_name',
+    'creator_name',
+    'created_by_name',
+  ]) {
+    final value = post[key]?.toString().trim() ?? '';
+    if (value.isNotEmpty && value.toLowerCase() != 'null') return value;
+  }
+  final first = post['first_name']?.toString().trim() ?? '';
+  final last = post['last_name']?.toString().trim() ?? '';
+  final userFirst = post['user_first_name']?.toString().trim() ?? '';
+  final userLast = post['user_last_name']?.toString().trim() ?? '';
+  final combined = '$first $last'.trim().isNotEmpty
+      ? '$first $last'.trim()
+      : '$userFirst $userLast'.trim();
+  if (combined.isNotEmpty) return combined;
+
+  // Older sync payloads only include the author id. Use the logged-in
+  // account's real name for posts created by that account instead of the
+  // generic official label.
+  final current = MobileApiService.currentUser ?? const <String, dynamic>{};
+  final currentFirst = current['first_name']?.toString().trim() ?? '';
+  final currentLast = current['last_name']?.toString().trim() ?? '';
+  final currentName = (current['name'] ?? current['full_name'])?.toString().trim() ??
+      '$currentFirst $currentLast'.trim();
+  if (currentName.isNotEmpty && currentName.toLowerCase() != 'null') {
+    final postUserId = '${post['user_id'] ?? post['author_id'] ?? post['created_by'] ?? ''}';
+    final currentUserId = '${current['user_id'] ?? current['id'] ?? ''}';
+    if (postUserId.isEmpty || currentUserId.isEmpty || postUserId == currentUserId) {
+      return currentName;
+    }
+  }
+  return 'SK 360 Official';
 }
 
 class _CommentsSheet extends StatefulWidget {
